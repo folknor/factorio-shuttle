@@ -1,0 +1,41 @@
+0.1.12:
+	- Fixed the filter box error when a search starts with ( or [
+	- When a shuttle-enabled train that only has 1 record arrives at a station in automatic mode,
+	  it will be put into manual mode by the mod.
+0.1.11:
+	- Removed the "Store color" keybinding I added by mistake in 0.1.10. Use my other mod instead, Color Equipment
+0.1.10:
+	- If your shuttle cant path to the target, it's put into manual mode immediately
+	- Filter string is restored properly on load
+	- Added Hidden Names per-user runtime setting
+	- Update for 0.15.10
+	- Fixed desync in multiplayer
+0.1.9:
+	- Jeez, I hope we're doing with my station list being stupid soon
+	- Apparently on_entity_renamed doesn't trigger when a name is copy+pasted to another entity
+0.1.8:
+	- Added per-player mod option to disable dot-to-go filter functionality
+	- Added per-player mod option whether or not the mod should auto-clear the filter box
+	- Fixed some UI elements not being created when needed
+	- Clicking a train station on the map and pressing Ctrl+J will send you there if you are in a shuttle-enabled train
+0.1.7:
+	- Hopefully fixed renaming stations
+	- Added /reset command to reset station list
+0.1.6:
+	- Lowered tech requirements and equipment cost to old Shuttle Train levels
+	- Fixed stations not being added when you build a new one, doh!
+0.1.5:
+	- Added keybinding to call nearest train to nearest - or selected/opened - station, default Ctrl+J
+	- If we detect FARL, increase its grid size from 2x2 to 4x2 to fit modules from both addons
+	- Thanks to Nexela for both the above
+0.1.4:
+	- Added optional dependency for Opteras VehicleGrid
+	- Changed item order string so that the Shuttle Module is not between Personal Roboport mk1 and 2
+	- Fixed my fubar logic with equipment grids. My bad!
+	- No longer sets the train color to green
+0.1.3: Try to prevent errors in the data stage when we're loaded with mods that behave very badly
+0.1.2:
+	- Fix using the filter box dot-action while in a shuttle
+	- Fix paging logic in the station list
+	- Fix not showing list of stations on game load
+0.1.1: Initial release

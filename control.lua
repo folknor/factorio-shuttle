@@ -203,6 +203,8 @@ do
 	-- end)
 end
 
+local onConfChangedFuncs = {}
+
 do
 	local function initializeStations()
 		global.stationEntities = {}
@@ -231,7 +233,7 @@ do
 
 	script.on_init(initGlobals)
 
-	script.on_configuration_changed(function(data)
+	table.insert(onConfChangedFuncs, function(data)
 		if data.mod_changes["folk-shuttle"] then
 			initGlobals()
 			forceUpdate()
@@ -392,15 +394,10 @@ do
 
 		if not inShuttle[p.index] then
 			for _, train in next, p.force.get_trains(p.surface) do
-				if available[train.state] and train.front_stock then
-					local free = false
+				if available[train.state] and train.front_stock and #train.passengers == 0 then
+					local free = nil
 					for _, carriage in next, train.carriages do
-						if carriage.passenger then
-							free = false
-							break
-						elseif hasEquipment(carriage) then
-							free = true
-						end
+						if hasEquipment(carriage) then free = true end
 					end
 					if free then
 						-- this train can be used, find out how far away it is
@@ -527,10 +524,10 @@ do
 			})
 		end
 
-		frame.one.style.resize_to_row_height = true
-		frame.one.style.resize_row_to_width = true
-		frame.two.style.resize_to_row_height = true
-		frame.two.style.resize_row_to_width = true
+		--frame.one.style.resize_to_row_height = true
+		--frame.one.style.resize_row_to_width = true
+		--frame.two.style.resize_to_row_height = true
+		--frame.two.style.resize_row_to_width = true
 
 		frame.style.visible = false
 	end
@@ -546,6 +543,12 @@ do
 			for _, player in pairs(event.research.force.players) do
 				initGui(player)
 			end
+		end
+	end)
+
+	table.insert(onConfChangedFuncs, function(data)
+		for _, p in pairs(game.players) do
+			if p.valid then initGui(p) end
 		end
 	end)
 end
@@ -645,3 +648,9 @@ do
 
 	script.on_event("shuttle-lite-call-nearest", keyCombo)
 end
+
+script.on_configuration_changed(function(data)
+	for _, f in next, onConfChangedFuncs do
+		f(data)
+	end
+end)

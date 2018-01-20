@@ -546,7 +546,7 @@ do
 		end
 	end)
 
-	table.insert(onConfChangedFuncs, function(data)
+	table.insert(onConfChangedFuncs, function()
 		for _, p in pairs(game.players) do
 			if p.valid then initGui(p) end
 		end

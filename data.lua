@@ -14,6 +14,7 @@ do
 		type = "recipe",
 		name = "shuttle-left",
 		icon = "__folk-shuttle__/graphics/left.png",
+		icon_size = 32,
 		enabled = false,
 		energy_required = 300,
 		ingredients = {
@@ -26,6 +27,7 @@ do
 		type = "recipe",
 		name = "shuttle-right",
 		icon = "__folk-shuttle__/graphics/right.png",
+		icon_size = 32,
 		enabled = false,
 		energy_required = 300,
 		ingredients = {
@@ -68,6 +70,7 @@ do
 		type = "item",
 		name = "shuttle-lite",
 		icon = "__folk-shuttle__/graphics/icon.png",
+		icon_size = 32,
 		placed_as_equipment_result = "shuttle-lite",
 		flags = { "goes-to-main-inventory" },
 		subgroup = "equipment",

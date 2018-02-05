@@ -116,7 +116,7 @@ do
 					global.tempResults[index] = {}
 					for _, station in next, global.sortedStations[p.force.name] do
 						local hide
-						for filter in patterns:gmatch("[^%,]+") do if station:find(filter, 1, true) then hide = true; break end end
+						for filter in patterns:gmatch("[^%,]+") do if station:find(filter) then hide = true; break end end
 						if not hide then table.insert(global.tempResults[index], station) end
 					end
 					global.lastFilter[index] = patterns

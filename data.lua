@@ -1,7 +1,7 @@
 require("style")
 
 do
-	local data = _G.data
+	local item_sounds = require("__base__.prototypes.item_sounds")
 
 	local input = {
 		type = "custom-input",
@@ -10,108 +10,88 @@ do
 		consuming = "none",
 	}
 
-	local left = {
-		type = "recipe",
-		name = "shuttle-left",
-		icon = "__folk-shuttle__/graphics/left.png",
-		icon_size = 32,
-		enabled = false,
-		energy_required = 300,
-		ingredients = {
-			{"coal", 1},
-		},
-		result = "iron-plate"
+	local shortcut = {
+		type = "shortcut",
+		name = "shuttle-lite-call-nearest",
+		icon = "__folk-shuttle__/graphics/folk-shuttle-call.png",
+		small_icon = "__folk-shuttle__/graphics/folk-shuttle-call.png",
+		order = "c[custom-actions]-s[call-shuttle]",
+		action = "lua",
+		icon_size = 128,
+		small_icon_size = 128,
+		style = "green",
+		associated_control_input = "shuttle-lite-call-nearest",
+		technology_to_unlock = "shuttle-lite",
+		unavailable_until_unlocked = true,
 	}
 
-	local right = {
-		type = "recipe",
-		name = "shuttle-right",
-		icon = "__folk-shuttle__/graphics/right.png",
-		icon_size = 32,
-		enabled = false,
-		energy_required = 300,
-		ingredients = {
-			{"coal", 1},
-		},
-		result = "iron-plate"
-	}
-
-	local cat = {
-		type = "equipment-category",
-		name = "shuttle-lite"
-	}
-
-	local grid = {
-		type = "equipment-grid",
-		name = "shuttle-lite",
-		width = 2,
-		height = 2,
-		equipment_categories = { "shuttle-lite" },
+	local item = {
+		type = "item-with-entity-data",
+		name = "folk-shuttle",
+		icon = "__folk-shuttle__/graphics/folk-shuttle-locomotive.png",
+		subgroup = "train-transport",
+		order = "c[rolling-stock]-a[shuttle]",
+		inventory_move_sound = item_sounds.locomotive_inventory_move,
+		pick_sound = item_sounds.locomotive_inventory_pickup,
+		drop_sound = item_sounds.locomotive_inventory_move,
+		place_result = "folk-shuttle",
+		stack_size = 5,
 	}
 
 	local recipe = {
 		type = "recipe",
-		name = "shuttle-lite",
+		name = "folk-shuttle",
+		energy_required = 5,
 		enabled = false,
-		energy_required = 10,
-		ingredients = {
-			{"electronic-circuit", 10},
-			{"iron-gear-wheel", 40},
-			{"steel-plate", 20},
-			-- {"solar-panel-equipment", 1},
-			-- {"battery-equipment", 1},
-			-- {"personal-roboport-equipment", 1},
-			-- {"decider-combinator", 1}
+		ingredients =
+		{
+			{ type = "item", name = "engine-unit",        amount = 20, },
+			{ type = "item", name = "electronic-circuit", amount = 15, },
+			{ type = "item", name = "advanced-circuit",   amount = 2, },
+			{ type = "item", name = "steel-plate",        amount = 30, },
 		},
-		result = "shuttle-lite"
+		results = { { type = "item", name = "folk-shuttle", amount = 1, }, },
 	}
-
-	local item = {
-		type = "item",
-		name = "shuttle-lite",
-		icon = "__folk-shuttle__/graphics/icon.png",
-		icon_size = 32,
-		placed_as_equipment_result = "shuttle-lite",
-		flags = { "goes-to-main-inventory" },
-		subgroup = "equipment",
-		order = "f[shuttle]-a[shuttle-lite]",
-		stack_size = 5,
-	}
-
-	local eq = table.deepcopy(data.raw["solar-panel-equipment"]["solar-panel-equipment"])
-	eq.name = "shuttle-lite"
-	eq.take_result = "shuttle-lite"
-	eq.sprite.filename = "__folk-shuttle__/graphics/icon.png"
-	eq.shape.width = 2
-	eq.shape.height = 2
-	eq.power = "0W"
-	eq.categories = {"shuttle-lite"}
 
 	local tech = {
 		type = "technology",
 		name = "shuttle-lite",
 		icon = "__folk-shuttle__/graphics/tech.png",
-		icon_size = 128,
+		icon_size = 256,
 		effects = {
 			{
+				type = "nothing",
+				use_icon_overlay_constant = false,
+				icon = "__folk-shuttle__/graphics/folk-call-shuttle.png",
+				icon_size = 128,
+				effect_description = { "shuttle-lite.button-tooltip", },
+			},
+			{
 				type = "unlock-recipe",
-				recipe = "shuttle-lite"
-			}
+				recipe = "folk-shuttle",
+			},
 		},
-		prerequisites = {"automated-rail-transportation"},
+		prerequisites = { "automated-rail-transportation", "radar", "advanced-circuit", },
 		unit =
 		{
-			count = 70,
+			count = 200,
 			ingredients =
 			{
-				{"science-pack-1", 2},
-				{"science-pack-2", 1},
+				{ "automation-science-pack", 1, },
+				{ "logistic-science-pack",   1, },
 			},
-			time = 20
+			time = 30,
 		},
-		order = "c-g-b-a"
 	}
 
-	data:extend({left, right, cat, grid, recipe, item, eq, tech, input})
+	local honk = {
+		type = "sound",
+		name = "folk-shuttle-honk",
+		filename = "__folk-shuttle__/honk.ogg",
+		category = "environment",
+		audible_distance_modifier = 8,
+		volume = 1,
+	}
 
+	data:extend({ tech, input, shortcut, honk, item, recipe, })
 end

@@ -1,100 +1,171 @@
---local ev = require("lib-events")
+local modGui = require("mod-gui")
+local VERSION = require("version")
 
--- To remove the modgui button after a mod has been removed, run
---/c for i,p in pairs(game.players) do if p.gui.left.mod_gui_flow and p.gui.left.mod_gui_flow.mod_gui_button_flow and
--- p.gui.left.mod_gui_flow.mod_gui_button_flow.shuttle_lite_button then p.gui.left.mod_gui_flow.mod_gui_button_flow.shuttle_lite_button.destroy() end end
+-- TODO
+-- Fix XXX comments
+-- GUI arrows? Only when path not found etc?
+-- Hack around multiple stations with the same name by sending the shuttle to the stations rail entity instead
 
-require("mod-gui")
-local modGui = _G.mod_gui
-local NAME = "shuttle-lite"
+local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities
+local investigate = {}
+local onConfChangedFuncs = {}
 
-local updateIfVisible
-local updateStationInterface
+local ERROR_CONFIG = {
+	color = { 1, 0, 0, 1, },
+	sound_path = "utility/cannot_build",
+}
+local ERROR_NO_TRAIN = { "shuttle-lite.no-train-found", }
+local ERROR_NO_STATION = { "shuttle-lite.no-station-found", }
+local ERROR_NO_RAIL = { "shuttle-lite.no-rail-found", }
+local ERROR_STATION_GONE = { "shuttle-lite.station-gone", }
+local ERROR_NO_PATH = { "shuttle-lite.no-path", }
 
-local sClearFilters = "folk-shuttle-clear-filters"
+local INFO_ALREADY_AT_STATION = "shuttle-lite.already-at-station"
+local INFO_SHUTTLE_INCOMING = "shuttle-lite.train-coming"
+local INFO_SHUTTLE_INCOMING_RAIL = { "shuttle-lite.train-coming-rail", }
+
+local FILTER_LEADING_SPACE = "^%s*()"
+local FILTER_TRAILING_SPACE = ".*%S"
+local FILTER_NON_SPACE = "%S+"
+local FILTER_CSV = "[^%,]+"
+local FILTER_TRAILING_DOT = "%.$"
+local EMPTY_STRING = ""
+local ELEMENT_TEXTBOX_FILTER = "shuttle_lite_filter"
+
+local C_SEARCH_DIRECTION = "respect-movement-direction"
+local C_LUA_EVENT = "shuttle-lite-call-nearest"
+
+-- vehicle.type = locomotive
+-- vehicle.train.front_stock.type = locomotive
+-- vehicle.name = folk-shuttle
+-- vehicle.train.front_stock.name = folk-shuttle
+local C_ENT_TYPE_LOCOMOTIVE = "locomotive"
+local C_ENT_NAME_SHUTTLE = "folk-shuttle"
+
+local C_TYPE_BUTTON = "button"
+local C_STYLE_BUTTON = "shuttle-lite-station-button"
+
+local SOUND_HONK = { path = "folk-shuttle-honk", }
+
+--------------------------------------------------------------------------------------------------
+-- SETTINGS
+--
+
 local sDotToGo = "folk-shuttle-dot-to-go"
 local sIgnoreStations = "folk-shuttle-ignore-stations"
+local sColor = "folk-shuttle-color"
 local getSetting
 do
 	local map = {
-		[sClearFilters] = true,
 		[sDotToGo] = true,
 		[sIgnoreStations] = true,
+		[sColor] = { r = 0.07, g = 0.92, b = 0, a = 0.5, },
 	}
 	local ini = {}
 	getSetting = function(p, setting)
 		if not ini[p.index] then ini[p.index] = {} end
-		if type(ini[p.index][setting]) == "nil" then ini[p.index][setting] = settings.get_player_settings(p)[setting].value end
+		if type(ini[p.index][setting]) == "nil" then
+			ini[p.index][setting] = settings.get_player_settings(p)[setting]
+				.value
+		end
 		return ini[p.index][setting]
 	end
 	local function update(event)
+		local p = game.players[event.player_index]
+		if not p or not p.valid then return end
 		if not map[event.setting] then return end
-		if not ini[event.player_index] then ini[event.player_index] = {} end
-		local value = settings.get_player_settings(game.players[event.player_index])[event.setting].value
-		ini[event.player_index][event.setting] = value
-		updateIfVisible(game.players[event.player_index])
-		--ev.trigger(event.setting, event.player_index, value)
+		if not ini[p.index] then ini[p.index] = {} end
+		local value = settings.get_player_settings(p)[event.setting].value
+		ini[p.index][event.setting] = value
+		updateGuiIfVisible(p)
 	end
 	script.on_event(defines.events.on_runtime_mod_setting_changed, update)
 end
 
-local waitConditions = {
-	{
-		type = "time",
-		compare_type = "and",
-		ticks = 180,
-	}
-}
+--------------------------------------------------------------------------------------------------
+-- UI
+--
 
--- Create this every game load from global.stationEntities
-
-local function clearFilters(p, frame)
-	if not getSetting(p, sClearFilters) then return end
-	if frame.one and frame.one["shuttle-lite-filter"] then
-		frame.one["shuttle-lite-filter"].text = ""
-	end
-	global.filter[p.index] = nil
-end
-
-local function forceClose(p)
-	local flow = modGui.get_frame_flow(p)
-	if not flow then return end
-	local frame = flow.shuttle_lite_frame
-	if not frame then return end
-	frame.style.visible = false
-	clearFilters(p, frame)
-
-	-- Forcefully rebuild filtered station array in getStations when stations are built/renamed/etc
-	global.lastFilter[p.index] = nil
-end
-
-local function isInTable(t, v) for i = 1, #t do if t[i] == v then return true end end end
-local function forceUpdate()
-	for _, sorted in pairs(global.sortedStations) do
-		for i = #sorted, 1, -1 do table.remove(sorted, i) end
-	end
-	for id, entity in pairs(global.stationEntities) do
-		if entity and entity.valid then
-			if not global.sortedStations[entity.force.name] then global.sortedStations[entity.force.name] = {} end
-			if not isInTable(global.sortedStations[entity.force.name], entity.backer_name) then
-				table.insert(global.sortedStations[entity.force.name], entity.backer_name)
-			end
-		else
-			global.stationEntities[id] = nil
-		end
-	end
-	for _, s in pairs(global.sortedStations) do
-		table.sort(s)
-	end
-	for _, force in pairs(game.forces) do
-		for _, p in next, force.players do
-			forceClose(p)
-		end
-	end
-end
-
-local getStations
 do
+	local function initGui(player)
+		local frame = player.gui.screen.add({
+			type = "frame",
+			caption = { "shuttle-lite.window-title", },
+			name = "shuttle_lite_frame",
+			direction = "vertical",
+		})
+		frame.auto_center = true
+		frame.style.maximal_height = 400
+
+		local inner = frame.add { name = "inner", type = "frame", direction = "vertical", style = "inside_shallow_frame", }
+		inner.style.padding = 8
+
+		inner.add({
+			type = "textfield",
+			name = "shuttle_lite_filter",
+			style = "shuttle-lite-text",
+			tooltip = { "shuttle-lite.filter-tooltip", },
+		})
+
+		local line = inner.add({
+			type = "line",
+			style = "inside_shallow_frame_with_padding_line",
+		})
+		line.style.bottom_margin = 8
+
+		local scroll = inner.add { name = "list", type = "scroll-pane", style = "scroll_pane_in_shallow_frame", }
+		scroll.style.margin = 4
+
+		frame.visible = false
+
+		return frame
+	end
+
+	local function resetGui(player)
+		local ff = modGui.get_frame_flow(player)
+		if ff and ff.shuttle_lite_frame then
+			ff.shuttle_lite_frame.visible = false
+			ff.shuttle_lite_frame.destroy()
+		end
+
+		local bf = modGui.get_button_flow(player)
+		if bf and bf.shuttle_lite_button then
+			bf.shuttle_lite_button.destroy()
+		end
+
+		local new = player.gui.screen.shuttle_lite_frame
+		if new then
+			new.visible = false
+			new.destroy()
+		end
+	end
+
+	table.insert(onConfChangedFuncs, function()
+		for _, p in pairs(game.players) do
+			if p.valid then resetGui(p) end
+		end
+	end)
+
+	local function createStationButtons(f, stations)
+		local map = {}
+		for _, s in next, stations do
+			if not map[s.backer_name] then
+				map[s.backer_name] = { s.unit_number, }
+			else
+				table.insert(map[s.backer_name], s.unit_number)
+			end
+		end
+
+		for name, un in pairs(map) do
+			f.add({
+				type = C_TYPE_BUTTON,
+				style = C_STYLE_BUTTON,
+				caption = name,
+				tooltip = table.concat(un, "|"),
+			})
+		end
+	end
+
 	-- map, key: actual station name, value: lowercased name
 	local lowerCaseNames = setmetatable({}, {
 		__index = function(self, k)
@@ -104,549 +175,509 @@ do
 		end,
 	})
 
-	getStations = function(p, index)
-		local s = global.page[index] and ((global.page[index] - 1) * 10 + 1) or 1
-		if s < 1 then s = 1 end
-		if not global.sortedStations[p.force.name] then return end
-
-		if not global.filter[index] then
-			local patterns = getSetting(p, sIgnoreStations)
-			if patterns and patterns:len() ~= 0 then
-				if not global.lastFilter[index] or global.lastFilter[index] ~= patterns then
-					global.tempResults[index] = {}
-					for _, station in next, global.sortedStations[p.force.name] do
-						local hide
-						for filter in patterns:gmatch("[^%,]+") do if station:find(filter) then hide = true; break end end
-						if not hide then table.insert(global.tempResults[index], station) end
-					end
-					global.lastFilter[index] = patterns
-					return unpack(global.tempResults[index])
-				else
-					if s > #global.tempResults[index] then
-						global.page[index] = nil
-						s = 1
-					end
-					return unpack(global.tempResults[index], s)
-				end
-			else
-				if s > #global.sortedStations[p.force.name] then
-					global.page[index] = nil
-					s = 1
-				end
-				return unpack(global.sortedStations[p.force.name], s)
-			end
-		else
-			if not global.lastFilter[index] or global.lastFilter[index] ~= global.filter[index] then
-				global.tempResults[index] = {} -- rehash all results
-				local lower = global.filter[index]:lower()
-				for _, station in next, global.sortedStations[p.force.name] do
-					local match = true
-					for word in lower:gmatch("%S+") do
-						if not lowerCaseNames[station]:find(word, 1, true) then match = false end
-					end
-					if match then table.insert(global.tempResults[index], station) end
-				end
-				global.lastFilter[index] = global.filter[index]
-				return unpack(global.tempResults[index])
-			else
-				if s > #global.tempResults[index] then
-					global.page[index] = nil
-					s = 1
-				end
-				return unpack(global.tempResults[index], s)
-			end
-		end
-	end
-end
-
-do
-	local stationButtons = setmetatable({}, {
-		__index = function(self, k)
-			local r = {
-				type = "button",
-				style = "shuttle-lite-station-button",
-				caption = k,
-			}
-			rawset(self, k, r)
-			return r
-		end
-	})
-	local function doUpdate(f, ...)
-		for i = 1, 10 do
-			local s = (select(i, ...))
-			-- when we unpack() the stations over an index that doesnt exist,
-			-- we get lots of empty varargs
-			if type(s) == "string" then
-				f.add(stationButtons[s])
-			end
-		end
+	local function trim(s)
+		local from = s:match(FILTER_LEADING_SPACE)
+		return from > #s and EMPTY_STRING or s:match(FILTER_TRAILING_SPACE, from)
 	end
 
-	updateStationInterface = function(frame, p)
-		if not frame or not frame.two then return end
-		frame.two.clear()
-		doUpdate(frame.two, getStations(p, p.index))
-	end
-
-	updateIfVisible = function(p)
-		local frame = modGui.get_frame_flow(p).shuttle_lite_frame
+	function updateStationButtonVisibilities(p)
+		local frame = p.gui.screen.shuttle_lite_frame
 		if not frame then return end
-		if frame.style.visible then
-			updateStationInterface(frame, p)
+
+		local btns = frame.inner.list.children
+
+		for _, btn in next, btns do
+			btn.visible = true
 		end
-	end
 
-	-- ev.register(sIgnoreStations, function(event)
-	-- 	local pIndex = unpack(event)
-	-- 	print(sIgnoreStations .. " event for " .. pIndex)
-	-- 	updateIfVisible(game.players[pIndex])
-	-- end)
-end
+		local lower = trim(frame.inner.shuttle_lite_filter.text:lower())
 
-local onConfChangedFuncs = {}
-
-do
-	local function initializeStations()
-		global.stationEntities = {}
-		local stations = game.surfaces.nauvis.find_entities_filtered({type = "train-stop"})
-		if stations and #stations ~= 0 then
-			for _, station in next, stations do
-				global.stationEntities[station.unit_number] = station
+		if lower and lower:len() ~= 0 then
+			for _, btn in next, btns do
+				for word in lower:gmatch(FILTER_NON_SPACE) do
+					if not lowerCaseNames[btn.caption]:find(word, 1, true) then
+						btn.visible = false
+						break
+					end
+				end
 			end
 		end
-		forceUpdate()
 	end
 
+	local function sortStations(a, b)
+		return a.backer_name < b.backer_name
+	end
+
+	function showGui(player)
+		local frame = player.gui.screen.shuttle_lite_frame
+		if not frame then frame = initGui(player) end
+
+		-- Create all the station buttons every time
+		local stations = game.train_manager.get_train_stops({
+			surface = player.surface,
+			force = player.force,
+			is_connected_to_rail = true,
+		})
+		table.sort(stations, sortStations)
+
+		local patterns = getSetting(player, sIgnoreStations)
+		if patterns and patterns:len() ~= 0 then
+			for i = #stations, 1, -1 do
+				local station = stations[i]
+				for filter in patterns:gmatch(FILTER_CSV) do
+					if station.backer_name:find(filter) then
+						table.remove(stations, i)
+						break
+					end
+				end
+			end
+		end
+
+		frame.inner.list.clear()
+		createStationButtons(frame.inner.list, stations)
+		updateStationButtonVisibilities(player)
+		frame.visible = true
+		frame.inner.shuttle_lite_filter.focus()
+	end
+
+	-- Must always be safe to call regardless of any circumstance
+	function hideGui(player)
+		if not player or not player.valid then return end
+		local frame = player.gui.screen.shuttle_lite_frame
+		if not frame then return end
+		frame.visible = false
+	end
+
+	function updateGuiIfVisible(player)
+		local frame = player.gui.screen.shuttle_lite_frame
+		if not frame then return end
+		if frame.visible then showGui(player) end
+	end
+end
+
+local function isShuttleValid(player, shuttle)
+	if not shuttle or not shuttle.valid or not shuttle.front_stock or not shuttle.front_stock.valid then return false end
+
+	if shuttle.front_stock.type ~= C_ENT_TYPE_LOCOMOTIVE or shuttle.front_stock.name ~= C_ENT_NAME_SHUTTLE then return false end
+
+	-- ZZZ We don't care if:
+	-- - The train is moving
+	-- - The train contains the given player as a passenger
+	-- - The train is in manual mode or not
+
+	-- Check that the train can even move
+	if shuttle.max_forward_speed <= 0 then return false end
+
+	-- Check that the force is the same as the players force
+	if shuttle.front_stock.force ~= player.force then return false end
+
+	-- Check that the surface is the same as the players surface
+	if shuttle.front_stock.surface ~= player.surface then return false end
+
+	-- Check that it has no passengers, or the passenger is the given player
+	if shuttle.passengers and #shuttle.passengers ~= 0 then
+		for _, p in next, shuttle.passengers do
+			if p and p.valid and p.index ~= player.index then return false end
+		end
+	end
+
+	for p, s in pairs(storage.shuttle) do
+		local lp = game.players[p]
+		if not lp or not lp.valid or not s or not s.valid then
+			-- Purge stale trains and/or players
+			storage.shuttle[p] = nil
+		else
+			-- check that |train| isnt already assigned
+			if s.id == shuttle.id and p ~= player.index then
+				return false
+			end
+		end
+	end
+
+	return true
+end
+
+local function assignShuttle(player, shuttle)
+	script.register_on_object_destroyed(shuttle)
+	storage.shuttle[player.index] = shuttle
+	investigate[shuttle.id] = true
+end
+
+local function freeShuttle(shuttleId)
+	investigate[shuttleId] = nil
+	for p, s in pairs(storage.shuttle) do
+		if (s.valid and s.id == shuttleId) or not s.valid then
+			storage.shuttle[p] = nil
+			hideGui(game.players[p])
+		end
+	end
+end
+
+local function freePlayer(p)
+	storage.shuttle[p.index] = nil
+	hideGui(p)
+end
+
+local waitConditions = {
+	{
+		type = "time",
+		compare_type = "and",
+		ticks = 180,
+	},
+}
+
+do
 	local function initGlobals()
-		-- If the player filters stations in any way, we use this table
-		-- instead of .sortedStations
-		if not global.tempResults then global.tempResults = {} end
-		-- key: player index, value: page index shown in GUI, from 1-N
-		if not global.page then global.page = {} end
-		-- key: player index, value: filter as typed
-		if not global.lastFilter then global.lastFilter = {} end
-		if not global.filter then global.filter = {} end
-		-- key: force name, value: indexed array of sorted station names
-		if not global.sortedStations then global.sortedStations = {} end
-		if not global.stationEntities then initializeStations() end
+		if not storage.releaseDate then storage = {} end
+		if not storage.releaseDate then storage.releaseDate = VERSION end
+
+		-- key: player index, value: LuaTrain
+		-- https://lua-api.factorio.com/latest/classes/LuaTrain.html#id
+		if not storage.shuttle then storage.shuttle = {} end
+
+		-- UI filter text box content is saved by the game
 	end
 
 	script.on_init(initGlobals)
 
 	table.insert(onConfChangedFuncs, function(data)
-		if data.mod_changes["folk-shuttle"] then
+		if data.mod_changes[C_ENT_NAME_SHUTTLE] then
 			initGlobals()
-			forceUpdate()
 		end
 	end)
-
-	local function enableAll(force, tech)
-		for _, effect in next, tech.effects do
-			if effect.type == "unlock-recipe" then
-				local rec = effect.recipe
-				if force.recipes[rec] then
-					if not force.recipes[rec].enabled then
-						force.recipes[rec].enabled = true
-					end
-					force.recipes[rec].reload()
-				elseif not force.recipes[rec] then
-					tech.researched = false
-				end
-			end
-		end
-	end
-
-	local function reset(event)
-		if not event or (not event.all and event.addon ~= "shuttle") then return end
-		initializeStations()
-		-- Check the tech
-		for _, force in pairs(game.forces) do
-			for name, tech in pairs(force.technologies) do
-				if tech.valid and name == "shuttle-lite" and tech.researched then
-					enableAll(force, tech)
-				end
-			end
-		end
-	end
-	require("lib-reset")(reset)
-
-	local function renamed(event)
-		if not event or not event.entity or event.entity.type ~= "train-stop" then return end
-		forceUpdate()
-	end
-	-- on_entity_renamed does not trigger when entity settings are copy+pasted
-	script.on_event(defines.events.on_entity_renamed, renamed)
-
-	-- invoked /after/ a paste is done
-	local function pasted(event)
-		if not event or not event.destination or event.destination.type ~= "train-stop" then return end
-		forceUpdate()
-	end
-	script.on_event(defines.events.on_entity_settings_pasted, pasted)
-
-	local function built(event)
-		if not event or not event.created_entity then return end
-		local e = event.created_entity
-		if e.type == "train-stop" then
-			global.stationEntities[e.unit_number] = e
-			forceUpdate()
-		end
-	end
-	script.on_event({defines.events.on_built_entity, defines.events.on_robot_built_entity}, built)
-
-	local function destroyed(event)
-		if event and event.entity and event.entity.type == "train-stop" then
-			global.stationEntities[event.entity.unit_number] = nil
-			forceUpdate()
-		end
-	end
-	script.on_event(defines.events.on_entity_died, destroyed)
-	script.on_event(defines.events.on_pre_player_mined_item, destroyed)
-	script.on_event(defines.events.on_robot_pre_mined, destroyed)
 end
 
-local function hasEquipment(carriage)
-	if carriage.grid and carriage.grid.equipment then
-		for _, eq in pairs(carriage.grid.equipment) do
-			if eq.name == NAME then return true end
+script.on_event(defines.events.on_player_mined_entity, function(event)
+	local e = event.entity
+	if not e or not e.valid or not e.unit_number or not e.train or not e.train.id then return end
+	freeShuttle(e.train.id)
+end)
+
+script.on_event(defines.events.on_object_destroyed, function(event)
+	if event.type == defines.target_type.train then
+		freeShuttle(event.useful_id)
+	end
+end)
+
+script.on_event(defines.events.on_player_driving_changed_state, function(event)
+	local p = game.players[event.player_index]
+	if not p then return end
+	if p.vehicle and p.vehicle.valid and p.vehicle.name == C_ENT_NAME_SHUTTLE and p.vehicle.train and p.vehicle.train.id then
+		if isShuttleValid(p, p.vehicle.train) then
+			assignShuttle(p, p.vehicle.train)
+			showGui(p)
 		end
+	else
+		hideGui(p)
+	end
+end)
+
+script.on_event(defines.events.on_train_changed_state, function(event)
+	if not event or not event.train or not event.train.valid then return end
+
+	if investigate[event.train.id] then
+		local t = event.train
+		if (t.state == defines.train_state.no_path) or (t.state == defines.train_state.path_lost) then
+			for p, s in pairs(storage.shuttle) do
+				if s and s.valid and s.id == t.id then
+					local player = game.players[p]
+					if player and player.valid and player.connected then
+						player.print(ERROR_NO_PATH, ERROR_CONFIG)
+					end
+				end
+			end
+			-- Free the shuttle even if we're sitting in it
+			freeShuttle(t.id)
+		end
+	end
+end)
+
+local function getShuttle(p)
+	local shuttle
+
+	if storage.shuttle[p.index] and storage.shuttle[p.index].valid and isShuttleValid(p, storage.shuttle[p.index]) then
+		shuttle = storage.shuttle[p.index]
+	elseif p.vehicle and p.vehicle.valid and p.vehicle.train and p.vehicle.train.valid and isShuttleValid(p, p.vehicle.train) then
+		shuttle = p.vehicle.train
+	else
+		local lowestDistance
+		local trains = game.train_manager.get_trains({
+			surface = p.surface,
+			force = p.force,
+			stock = C_ENT_NAME_SHUTTLE,
+		})
+
+		for _, train in next, trains do
+			if train.valid and train.max_forward_speed > 0 then
+				local distance = (((p.position.x - train.front_stock.position.x) ^ 2) + ((p.position.y - train.front_stock.position.y) ^ 2)) ^
+					0.5
+				if not lowestDistance or distance < lowestDistance then
+					if isShuttleValid(p, train) then
+						lowestDistance = distance
+						shuttle = train
+					end
+				end
+			end
+		end
+	end
+
+	if shuttle and shuttle.valid then
+		assignShuttle(p, shuttle)
+	else
+		freePlayer(p)
+	end
+
+	return shuttle
+end
+
+local function isShuttleAtStation(shuttle, station)
+	if shuttle.state == defines.train_state.wait_station and shuttle.schedule.records[1].station == station.backer_name then
+		return true
+	end
+	if shuttle.station and shuttle.station.valid and shuttle.station.unit_number and shuttle.station.unit_number == station.unit_number then
+		return true
 	end
 	return false
 end
 
-local inShuttle = {}
-do
-	-- Must be safe to call even if we left a different vehicle type.
-	local function leftVehicle(p)
-		inShuttle[p.index] = nil
-		local frame = modGui.get_frame_flow(p).shuttle_lite_frame
-		if not frame then return end
-		frame.style.visible = false
-	end
-
-	script.on_event(defines.events.on_player_mined_entity, function(event)
-		local e = event.entity
-		if not e or not e.unit_number then return end
-		local p = game.players[event.player_index]
-		if not p or not inShuttle[event.player_index] or inShuttle[event.player_index] ~= e.unit_number then return end
-		leftVehicle(p)
-	end)
-
-	script.on_event(defines.events.on_player_driving_changed_state, function(event)
-		local p = game.players[event.player_index]
-		if not p then return end
-		if p.vehicle and p.vehicle.valid then
-			if p.vehicle.type ~= "locomotive" or not p.vehicle.train then return end
-			if p.vehicle.unit_number and hasEquipment(p.vehicle.train.front_stock) then
-				inShuttle[event.player_index] = p.vehicle.unit_number
-				-- Show UI
-				local frame = modGui.get_frame_flow(p).shuttle_lite_frame
-				if not frame then return end
-				updateStationInterface(frame, p)
-				frame.style.visible = true
-			end
-		else
-			leftVehicle(p)
-		end
-	end)
-end
-
-local investigate = {}
-do
-	local ignore = {
-		[defines.train_state.no_schedule] = true,
-		[defines.train_state.manual_control_stop] = true,
-		[defines.train_state.manual_control] = true,
+local function scheduleAndSendShuttle(p, shuttle, schedule)
+	investigate[shuttle.id] = true
+	shuttle.schedule = {
+		current = 1,
+		records = { schedule, },
 	}
-	local noPath = {"shuttle-lite.no-path"}
-
-	local function trainState(event)
-		if not event or not event.train or not event.train.front_stock then return end
-		if investigate[event.train.front_stock.unit_number] then
-			local t = event.train
-			if (t.state == defines.train_state.no_path) or (t.state == defines.train_state.path_lost) then
-				t.manual_mode = true
-				t.front_stock.force.print(noPath)
-				investigate[t.front_stock.unit_number] = nil
-			elseif ignore[t.state] then
-				investigate[t.front_stock.unit_number] = nil
-			elseif t.state == defines.train_state.wait_station and #t.schedule.records == 1 then
-				t.manual_mode = true
-				investigate[t.front_stock.unit_number] = nil
-			end
-		end
+	shuttle.manual_mode = false
+	p.play_sound(SOUND_HONK)
+	for _, stock in next, shuttle.carriages do
+		stock.color = getSetting(p, sColor)
 	end
-
-	script.on_event(defines.events.on_train_changed_state, trainState)
 end
 
-local callShuttle
-do
-	local available = {
-		[defines.train_state.no_schedule] = true,
-		[defines.train_state.manual_control] = true,
-		[defines.train_state.wait_station] = true,
-	}
-	--local color = {r = 0.07, g = 0.92, b = 0, a = 0.5} for posterity
-	callShuttle = function(p, bestStation)
-		local bestTrain = nil
-		local lowestDistance = nil
+-- XXX move isvalidrail and also make an isvalidstation etc
+local function sendShuttleToRail(p, shuttle, rail)
+	if not rail or not rail.valid then
+		p.print(ERROR_NO_RAIL, ERROR_CONFIG)
+		return
+	end
+	if not shuttle or not shuttle.valid then
+		p.print(ERROR_NO_TRAIN, ERROR_CONFIG)
+		return
+	end
 
-		if not inShuttle[p.index] then
-			for _, train in next, p.force.get_trains(p.surface) do
-				if available[train.state] and train.front_stock and #train.passengers == 0 then
-					local free = nil
-					for _, carriage in next, train.carriages do
-						if hasEquipment(carriage) then free = true end
-					end
-					if free then
-						-- this train can be used, find out how far away it is
-						local distance = (((p.position.x - train.front_stock.position.x) ^ 2) + ((p.position.y - train.front_stock.position.y) ^ 2)) ^ 0.5
-						if not lowestDistance or distance < lowestDistance then
-							lowestDistance = distance
-							bestTrain = train
-						end
-					end
-				end
-			end
-			if not bestTrain then
-				p.print({"shuttle-lite.no-train-found"})
-				return
-			end
-		else
-			bestTrain = p.vehicle.train
-		end
+	p.print(INFO_SHUTTLE_INCOMING_RAIL)
+	scheduleAndSendShuttle(p, shuttle, {
+		wait_conditions = waitConditions,
+		rail = rail,
+	})
+end
 
-		if not bestStation then
-			lowestDistance = nil
-			if p.opened and p.opened.type and p.opened.type == "train-stop" then
-				bestStation = p.opened.backer_name
-			else
-				local stations = p.surface.find_entities_filtered({type = "train-stop", force=p.force})
-				if stations and #stations ~= 0 then
-					for _, station in next, stations do
-						local distance = (((p.position.x - station.position.x) ^ 2) + ((p.position.y - station.position.y) ^ 2)) ^ 0.5
-						if not lowestDistance or distance < lowestDistance then
-							lowestDistance = distance
-							bestStation = station.backer_name
-						end
-					end
-				end
-			end
-			if not bestStation then
-				p.print({"shuttle-lite.no-station-found"})
-				return
-			end
-		end
+local function sendShuttleToStation(p, shuttle, station)
+	if not station or not station.valid then
+		p.print(ERROR_NO_STATION, ERROR_CONFIG)
+		return
+	end
+	if not shuttle or not shuttle.valid then
+		p.print(ERROR_NO_TRAIN, ERROR_CONFIG)
+		return
+	end
 
-		-- Is the train already at the station perhaps?
-		if bestTrain.state == defines.train_state.wait_station and bestTrain.schedule.records[1].station == bestStation then
-			p.print({"shuttle-lite.already-at-station"})
-		else
-			p.print({"shuttle-lite.train-coming", bestStation})
-			-- register for investigation before we set the schedule/automatic mode
-			investigate[bestTrain.front_stock.unit_number] = true
-			bestTrain.schedule = {
-				current = 1,
-				records = {
-					{
-						station = bestStation,
-						wait_conditions = waitConditions,
-					}
-				}
-			}
-			bestTrain.manual_mode = false
-		end
+	-- Is the train already at the station perhaps?
+	if isShuttleAtStation(shuttle, station) then
+		p.print({ INFO_ALREADY_AT_STATION, station.backer_name, })
+	else
+		p.print({ INFO_SHUTTLE_INCOMING, station.backer_name, })
+		scheduleAndSendShuttle(p, shuttle, {
+			station = station.backer_name,
+			wait_conditions = waitConditions,
+		})
 	end
 end
 
 do
-	local function initGui(player)
-		local buttons = modGui.get_button_flow(player)
-		if not buttons.shuttle_lite_button then
-			buttons.add({
-				type = "sprite-button",
-				name = "shuttle_lite_button",
-				sprite = "item/shuttle-lite",
-				style = modGui.button_style,
-				tooltip = {"shuttle-lite.button-tooltip"}
-			})
+	local function buttonCallShuttle(p, button)
+		local shuttle = getShuttle(p)
+
+		if not shuttle or not shuttle.valid then
+			p.print(ERROR_NO_TRAIN, ERROR_CONFIG)
+			return
 		end
 
-		local frames = modGui.get_frame_flow(player)
-		local frame = frames.shuttle_lite_frame
-
-		if not frame then
-			frame = frames.add({
-				type = "frame",
-				name = "shuttle_lite_frame",
-				direction = "vertical",
-				style = modGui.frame_style
-			})
-		end
-		if not frame.one then
-			frame.add({
-				type = "flow",
-				name = "one",
-				direction = "horizontal"
-			})
-		end
-		if not frame.one["shuttle-lite-previous"] then
-			frame.one.add({
-				type = "sprite-button",
-				name = "shuttle-lite-previous",
-				sprite = "recipe/shuttle-left",
-				style = "shuttle-lite-page-button",
-			})
-		end
-		if not frame.one["shuttle-lite-filter"] then
-			frame.one.add({
-				type = "textfield",
-				name = "shuttle-lite-filter",
-				style = "shuttle-lite-text",
-				tooltip = {"shuttle-lite.filter-tooltip"}
-			})
-		end
-		if not frame.one["shuttle-lite-next"] then
-			frame.one.add({
-				type = "sprite-button",
-				name = "shuttle-lite-next",
-				sprite = "recipe/shuttle-right",
-				style = "shuttle-lite-page-button",
-			})
+		local stations = {}
+		for w in button.tooltip:gmatch("([^|]+)") do
+			table.insert(stations, w)
 		end
 
-		if not frame.two then
-			frame.add({
-				type = "flow",
-				name = "two",
-				direction = "vertical",
-			})
-		end
-
-		--frame.one.style.resize_to_row_height = true
-		--frame.one.style.resize_row_to_width = true
-		--frame.two.style.resize_to_row_height = true
-		--frame.two.style.resize_row_to_width = true
-
-		frame.style.visible = false
-	end
-	script.on_event(defines.events.on_player_created, function(event)
-		if game.players[event.player_index].force.technologies[NAME].researched then
-			initGui(game.players[event.player_index])
-		end
-	end)
-
-	script.on_event(defines.events.on_research_finished, function(event)
-		if not event or not event.research then return end
-		if event.research.name == NAME then
-			for _, player in pairs(event.research.force.players) do
-				initGui(player)
+		for i = #stations, 1, -1 do
+			local ent = game.get_entity_by_unit_number(stations[i])
+			if not ent or not ent.valid then
+				table.remove(stations, i)
 			end
 		end
-	end)
 
-	table.insert(onConfChangedFuncs, function()
-		for _, p in pairs(game.players) do
-			if p.valid then initGui(p) end
+		if #stations == 0 then
+			showGui(p) -- Recreates the UI
+			p.print(ERROR_STATION_GONE, ERROR_CONFIG)
+			return
 		end
-	end)
-end
 
-do
-	local handle = {}
-
-	handle["shuttle-lite-station-button"] = function(p, elem)
-		local frame = modGui.get_frame_flow(p).shuttle_lite_frame
-		if not frame or not frame.one then return end
-		clearFilters(p, frame)
-		if inShuttle[p.index] then
-			local train = p.vehicle.train
-			investigate[train.front_stock.unit_number] = true
-			train.schedule = {current = 1, records = {{
-				station = elem.caption,
-				wait_conditions = waitConditions,
-			}}}
-			train.manual_mode = false
-		else
-			callShuttle(p, elem.caption)
-		end
-	end
-
-	handle["shuttle_lite_button"] = function(p, _, event)
-		if not event then return end
-		if not inShuttle[p.index] and type(event.control) == "boolean" and event.control == true then
-			callShuttle(p)
-		else
-			local frame = modGui.get_frame_flow(p).shuttle_lite_frame
-			if not frame then return end
-			frame.style.visible = not frame.style.visible
-			if frame.style.visible then
-				updateStationInterface(frame, p)
-			end
-		end
-	end
-
-	handle["shuttle-lite-previous"] = function(p)
-		if not global.page[p.index] then return end
-		global.page[p.index] = global.page[p.index] - 1
-		if global.page[p.index] < 1 then global.page[p.index] = nil end
-		updateIfVisible(p)
-	end
-	handle["shuttle-lite-next"] = function(p)
-		global.page[p.index] = global.page[p.index] and global.page[p.index] + 1 or 2
-		updateIfVisible(p)
+		local station = game.get_entity_by_unit_number(stations[math.random(#stations)])
+		sendShuttleToStation(p, shuttle, station)
 	end
 
 	script.on_event(defines.events.on_gui_click, function(event)
 		if not event or not event.element then return end
-		if handle[event.element.name] then
-			handle[event.element.name](game.players[event.player_index], event.element, event)
-		elseif event.element.style and event.element.style.name == "shuttle-lite-station-button" then
-			handle["shuttle-lite-station-button"](game.players[event.player_index], event.element)
+		if event.element.style and event.element.style.name == "shuttle-lite-station-button" then
+			buttonCallShuttle(game.players[event.player_index], event.element)
 		end
 	end)
 
-	local function trim(s)
-		local from = s:match("^%s*()")
-		return from > #s and "" or s:match(".*%S", from)
-	end
 	script.on_event(defines.events.on_gui_text_changed, function(event)
-		local elem = event.element
-		if elem.name == "shuttle-lite-filter" and elem.text and type(elem.text) == "string" then
+		local el = event.element
+		if el.name == ELEMENT_TEXTBOX_FILTER then
 			local p = game.players[event.player_index]
-			local frame = modGui.get_frame_flow(p).shuttle_lite_frame
-			local input = trim(elem.text)
-			if input:len() == 0 then
-				global.filter[event.player_index] = nil
-			else
-				if input:find("%.$") and getSetting(p, sDotToGo) then
-					-- find the top button
-					if not frame or not frame.two then return end
-					if type(frame.two.children[1]) ~= "nil" then
-						handle["shuttle-lite-station-button"](p, frame.two.children[1])
+
+			if event.element.text:find(FILTER_TRAILING_DOT) and getSetting(p, sDotToGo) then
+				local btns = el.parent.list
+				for _, btn in next, btns.children do
+					if btn.visible then
+						buttonCallShuttle(p, btn)
+						break
 					end
-				else
-					global.filter[event.player_index] = input
 				end
+				event.element.text = event.element.text:sub(1, -2)
+			else
+				updateStationButtonVisibilities(p)
 			end
-			updateStationInterface(frame, p)
 		end
 	end)
 end
 
 do
-	local function valid(e) return e and e.valid and e.type == "train-stop" end
-	local function keyCombo(event)
-		local p = game.players[event.player_index]
-		local explicit
-		if valid(p.selected) then explicit = p.selected.backer_name
-		elseif valid(p.opened) then explicit = p.opened.backer_name
-		end
-		callShuttle(p, explicit)
+	local function validStop(e) return e and e.valid and e.type == "train-stop" end
+
+	-- pls if you know a better way hlep
+	local function validRail(e)
+		return e and e.valid and e.prototype and e.prototype.mineable_properties and
+			e.prototype.mineable_properties.products and e.prototype.mineable_properties.products[1] and
+			(e.prototype.mineable_properties.products[1].name == "rail" or e.prototype.mineable_properties.products[1].name == "rail-ramp")
 	end
 
-	script.on_event("shuttle-lite-call-nearest", keyCombo)
+	local function distanceSort(a, b)
+		return a[2] < b[2]
+	end
+
+	local function findNearestPathableStation(p, shuttle)
+		local lowestDistance = nil
+		local distances = {}
+		local closest
+		local tm = game.train_manager
+
+		local stations = tm.get_train_stops({
+			surface = p.surface,
+			force = p.force,
+			is_connected_to_rail = true,
+		})
+		for _, s in next, stations do
+			local distance = (((p.position.x - s.position.x) ^ 2) + ((p.position.y - s.position.y) ^ 2)) ^ 0.5
+			table.insert(distances, { s, distance, })
+			if not lowestDistance or distance < lowestDistance then
+				lowestDistance = distance
+				closest = s
+			end
+		end
+
+		if not closest then return end
+
+		if not tm.request_train_path({
+				train = shuttle,
+				search_direction = C_SEARCH_DIRECTION,
+				goals = { closest, },
+			}).found_path then
+			table.sort(distances, distanceSort)
+			table.remove(distances, 1) -- We cant path here, so remove it
+
+			for _, tuple in next, distances do
+				local s = tuple[1]
+				if tm.request_train_path({
+						train = shuttle,
+						search_direction = C_SEARCH_DIRECTION,
+						goals = { s, },
+					}).found_path then
+					closest = s
+					break
+				end
+			end
+		end
+
+		distances = nil
+		return closest
+	end
+
+	local function keyCombo(event)
+		local p = game.players[event.player_index]
+		if not p or not p.valid then return end
+
+		local shuttle = getShuttle(p)
+
+		if not shuttle or not shuttle.valid then
+			p.print(ERROR_NO_TRAIN, ERROR_CONFIG)
+			return
+		end
+
+		if validRail(p.selected) then
+			-- This is a rail woooo
+
+			-- this doesn't work, it "randomly" returns true/false even with modified or no steps_limit or different directions
+			-- local canpath = game.train_manager.request_train_path({
+			-- 	train = shuttle,
+			-- 	goals = {
+			-- 		{
+			-- 			rail = p.selected,
+			-- 			direction = defines.rail_direction.front,
+			-- 		},
+			-- 	},
+			-- 	steps_limit = 10000,
+			-- 	search_direction = C_SEARCH_DIRECTION,
+			-- })
+			sendShuttleToRail(p, shuttle, p.selected)
+		else
+			local station
+
+			if validStop(p.selected) then
+				station = p.selected
+			elseif validStop(p.opened) then
+				station = p.opened
+			end
+
+			if not station then
+				station = findNearestPathableStation(p, shuttle)
+			end
+
+			if not station then
+				p.print(ERROR_NO_STATION, ERROR_CONFIG)
+				return
+			end
+
+			if station and station.valid then
+				if not game.train_manager.request_train_path({
+						train = shuttle,
+						search_direction = C_SEARCH_DIRECTION,
+						goals = { station, },
+					}).found_path then
+					-- XXX should perhaps instruct findNearestPathableStation to ignore the current station
+					station = findNearestPathableStation(p, shuttle)
+				end
+			end
+
+			sendShuttleToStation(p, shuttle, station)
+		end
+	end
+
+	script.on_event(C_LUA_EVENT, keyCombo)
+	script.on_event("on_lua_shortcut", function(event)
+		if not event or event.prototype_name ~= C_LUA_EVENT then return end
+		keyCombo(event)
+	end)
 end
 
 script.on_configuration_changed(function(data)

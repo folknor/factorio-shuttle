@@ -1,5 +1,5 @@
 ---------------------------------------------------------------------------------------------------
-Version: 0.2.3
+Version: 0.2.4
 Date: 2024-11-15
   Changes:
     - We now always try to path to the rail entity connected to the station instead of

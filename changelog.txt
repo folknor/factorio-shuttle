@@ -1,4 +1,18 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.5
+Date: 2024-11-15
+  Changes:
+    - Added minimap preview to station selection buttons in the destination picker.
+    - As a result, the destination picker window is now at least twice as large.
+    - Added a new per-player runtime setting for whether or not the filter textbox
+      should recieve focus when the window opens
+    - Added a new per-player runtime setting for whether or not the filter textbox
+      should clear itself automatically when you type a dot-to-go or hit Enter
+    - Hitting Enter in the filter textbox now has the same effect as dot-to-go.
+      (this was not possible when I initially ported this mod a long time ago,
+      they must have added the possibility to react to Enter at some point the
+      past 6-7 years :-P this is why dot-to-go exists at all, haha gg)
+---------------------------------------------------------------------------------------------------
 Version: 0.2.4
 Date: 2024-11-15
   Changes:

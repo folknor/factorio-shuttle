@@ -4,10 +4,12 @@ local VERSION = require("version")
 -- TODO
 -- Fix XXX comments
 -- GUI arrows? Only when path not found? and player not in shuttle
+-- Add a "minimize" (collapse?) button to the destination UI window
+-- Add a way/keybinding or whatever to show/hide destination UI window
+-- Add checkbox in the window that toggles whether or not sIgnoreStations should apply
 
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities
 local investigate = {}
-local onConfChangedFuncs = {}
 
 local ERROR_CONFIG = {
 	color = { 1, 0, 0, 1, },
@@ -53,11 +55,16 @@ local SOUND_HONK = { path = "folk-shuttle-honk", }
 local sDotToGo = "folk-shuttle-dot-to-go"
 local sIgnoreStations = "folk-shuttle-ignore-stations"
 local sColor = "folk-shuttle-color"
+local sClearFilterOnConfirm = "folk-shuttle-clear-filter-on-confirm"
+local sFocusOnShow = "folk-shuttle-focus-filter-on-show"
+
 local getSetting
 do
 	local map = {
 		[sDotToGo] = true,
 		[sIgnoreStations] = true,
+		[sFocusOnShow] = true,
+		[sClearFilterOnConfirm] = true,
 		[sColor] = { r = 0.07, g = 0.92, b = 0, a = 0.5, },
 	}
 	local ini = {}
@@ -94,56 +101,97 @@ do
 			direction = "vertical",
 		})
 		frame.auto_center = true
-		frame.style.maximal_height = 400
+		frame.style.width = 510
+		frame.style.height = 400
 
-		local inner = frame.add { name = "inner", type = "frame", direction = "vertical", style = "inside_shallow_frame", }
-		inner.style.padding = 8
+		local vertical = frame.add({
+			name = "split",
+			type = "flow",
+			direction = "horizontal",
+		})
+		vertical.style.height = 348
+		vertical.style.width = 481
+		vertical.style.horizontal_spacing = 8
 
-		inner.add({
+		-----------------------------------------------------------------------
+		-- LEFT SIDE
+		--
+
+		local left = vertical.add({
+			name = "left",
+			type = "frame",
+			direction = "vertical",
+			style = "inside_shallow_frame_with_padding",
+		})
+		left.style.height = 348
+		left.style.width = 226
+
+		left.add({
 			type = "textfield",
 			name = "shuttle_lite_filter",
 			style = "shuttle-lite-text",
 			tooltip = { "shuttle-lite.filter-tooltip", },
+			lose_focus_on_confirm = true,
 		})
 
-		local line = inner.add({
+		local line = left.add({
 			type = "line",
 			style = "inside_shallow_frame_with_padding_line",
 		})
 		line.style.bottom_margin = 8
 
-		local scroll = inner.add { name = "list", type = "scroll-pane", style = "scroll_pane_in_shallow_frame", }
+		local scroll = left.add({
+			name = "list",
+			type = "scroll-pane",
+			style = "scroll_pane_in_shallow_frame",
+			horizontal_scroll_policy = "never",
+			vertical_scroll_policy = "always",
+		})
+		scroll.style.height = 280
+		scroll.style.width = 202
 		scroll.style.margin = 4
+
+		-----------------------------------------------------------------------
+		-- RIGHT SIDE
+		--
+
+		local right = vertical.add({
+			type = "flow",
+			name = "right",
+			direction = "vertical",
+		})
+		right.style.height = 348
+		right.style.width = 251
+
+		local mapborder = right.add({
+			type = "frame",
+			name = "mapcontainer",
+			direction = "vertical",
+			style = "inside_deep_frame",
+		})
+
+		local map = mapborder.add({
+			type = "minimap",
+			name = "map",
+			minimap_player_index = player.index,
+		})
+		map.style.height = 251
+		map.style.width = 251
+
+		local hlep = right.add({
+			type = "label",
+			caption = { "shuttle-lite.window-help", },
+		})
+		-- ZZZ for any translators, the hlep caption should be max roughtly 190 characters long based on the current sizes
+		hlep.style.single_line = false
+		hlep.style.height = 97
+		hlep.style.width = 251
+		hlep.style.font = "folk-shuttle"
 
 		frame.visible = false
 
 		return frame
 	end
-
-	local function resetGui(player)
-		local ff = modGui.get_frame_flow(player)
-		if ff and ff.shuttle_lite_frame then
-			ff.shuttle_lite_frame.visible = false
-			ff.shuttle_lite_frame.destroy()
-		end
-
-		local bf = modGui.get_button_flow(player)
-		if bf and bf.shuttle_lite_button then
-			bf.shuttle_lite_button.destroy()
-		end
-
-		local new = player.gui.screen.shuttle_lite_frame
-		if new then
-			new.visible = false
-			new.destroy()
-		end
-	end
-
-	table.insert(onConfChangedFuncs, function()
-		for _, p in pairs(game.players) do
-			if p.valid then resetGui(p) end
-		end
-	end)
 
 	local function createStationButtons(f, stations)
 		local total = {}
@@ -156,23 +204,43 @@ do
 			local name = s.backer_name
 			if total[s.backer_name] > 1 then
 				count[s.backer_name] = (count[s.backer_name] and count[s.backer_name] + 1) or 1
-				name = s.backer_name .. " (" .. count[s.backer_name] .. "/" .. total[s.backer_name] .. ")"
+				name = { "shuttle-lite.station-button", s.backer_name, count[s.backer_name], total[s.backer_name], }
 			end
 			f.add({
 				type = C_TYPE_BUTTON,
 				style = C_STYLE_BUTTON,
 				caption = name,
 				tooltip = s.unit_number,
+				raise_hover_events = true,
 			})
 		end
 	end
 
+	script.on_event(defines.events.on_gui_hover, function(event)
+		if not event or not event.element then return end
+		if event.element.style and event.element.style.name == C_STYLE_BUTTON then
+			local frame = game.players[event.player_index].gui.screen.shuttle_lite_frame
+			if not frame then return end
+			local station = game.get_entity_by_unit_number(event.element.tooltip)
+			if not station or not station.valid then return end
+			frame.split.right.mapcontainer.map.entity = station
+		end
+	end)
+
+	local C_TYPE_TABLE = "table"
+	local type = type
+
 	-- map, key: actual station name, value: lowercased name
 	local lowerCaseNames = setmetatable({}, {
 		__index = function(self, k)
-			local v = k:lower()
-			rawset(self, k, v)
-			return v
+			if type(k) == C_TYPE_TABLE then
+				-- ZZZ index depends on the localized string setup
+				return k[2]:lower()
+			else
+				local v = k:lower()
+				rawset(self, k, v)
+				return v
+			end
 		end,
 	})
 
@@ -185,13 +253,13 @@ do
 		local frame = p.gui.screen.shuttle_lite_frame
 		if not frame then return end
 
-		local btns = frame.inner.list.children
+		local btns = frame.split.left.list.children
 
 		for _, btn in next, btns do
 			btn.visible = true
 		end
 
-		local lower = trim(frame.inner.shuttle_lite_filter.text:lower())
+		local lower = trim(frame.split.left.shuttle_lite_filter.text:lower())
 
 		if lower and lower:len() ~= 0 then
 			for _, btn in next, btns do
@@ -200,6 +268,16 @@ do
 						btn.visible = false
 						break
 					end
+				end
+			end
+		end
+
+		for _, btn in next, btns do
+			if btn.visible then
+				local station = game.get_entity_by_unit_number(btn.tooltip)
+				if station and station.valid then
+					frame.split.right.mapcontainer.map.entity = station
+					break
 				end
 			end
 		end
@@ -234,11 +312,13 @@ do
 			end
 		end
 
-		frame.inner.list.clear()
-		createStationButtons(frame.inner.list, stations)
+		frame.split.left.list.clear()
+		createStationButtons(frame.split.left.list, stations)
 		updateStationButtonVisibilities(player)
 		frame.visible = true
-		frame.inner.shuttle_lite_filter.focus()
+		if getSetting(player, sFocusOnShow) then
+			frame.split.left.shuttle_lite_filter.focus()
+		end
 	end
 
 	-- Must always be safe to call regardless of any circumstance
@@ -326,27 +406,6 @@ local waitConditions = {
 		ticks = 180,
 	},
 }
-
-do
-	local function initGlobals()
-		if not storage.releaseDate then storage = {} end
-		if not storage.releaseDate then storage.releaseDate = VERSION end
-
-		-- key: player index, value: LuaTrain
-		-- https://lua-api.factorio.com/latest/classes/LuaTrain.html#id
-		if not storage.shuttle then storage.shuttle = {} end
-
-		-- UI filter text box content is saved by the game
-	end
-
-	script.on_init(initGlobals)
-
-	table.insert(onConfChangedFuncs, function(data)
-		if data.mod_changes[C_ENT_NAME_SHUTTLE] then
-			initGlobals()
-		end
-	end)
-end
 
 script.on_event(defines.events.on_player_mined_entity, function(event)
 	local e = event.entity
@@ -527,7 +586,13 @@ do
 	script.on_event(defines.events.on_gui_click, function(event)
 		if not event or not event.element then return end
 		if event.element.style and event.element.style.name == "shuttle-lite-station-button" then
-			buttonCallShuttle(game.players[event.player_index], event.element)
+			local p = game.players[event.player_index]
+			buttonCallShuttle(p, event.element)
+
+			if getSetting(p, sClearFilterOnConfirm) then
+				p.gui.screen.shuttle_lite_frame.split.left.shuttle_lite_filter.text = ""
+				updateStationButtonVisibilities(p)
+			end
 		end
 	end)
 
@@ -544,8 +609,31 @@ do
 						break
 					end
 				end
-				event.element.text = event.element.text:sub(1, -2)
+				if getSetting(p, sClearFilterOnConfirm) then
+					event.element.text = ""
+					updateStationButtonVisibilities(p)
+				else
+					event.element.text = event.element.text:sub(1, -2)
+				end
 			else
+				updateStationButtonVisibilities(p)
+			end
+		end
+	end)
+
+	script.on_event(defines.events.on_gui_confirmed, function(event)
+		local el = event.element
+		if el.name == ELEMENT_TEXTBOX_FILTER then
+			local p = game.players[event.player_index]
+			local btns = el.parent.list
+			for _, btn in next, btns.children do
+				if btn.visible then
+					buttonCallShuttle(p, btn)
+					break
+				end
+			end
+			if getSetting(p, sClearFilterOnConfirm) then
+				event.element.text = ""
 				updateStationButtonVisibilities(p)
 			end
 		end
@@ -680,8 +768,50 @@ do
 	end)
 end
 
-script.on_configuration_changed(function(data)
-	for _, f in next, onConfChangedFuncs do
-		f(data)
+do
+	local function resetGui(player)
+		local ff = modGui.get_frame_flow(player)
+		if ff and ff.shuttle_lite_frame and ff.shuttle_lite_frame.valid then
+			ff.shuttle_lite_frame.visible = false
+			ff.shuttle_lite_frame.destroy()
+		end
+
+		local bf = modGui.get_button_flow(player)
+		if bf and bf.shuttle_lite_button and bf.shuttle_lite_button.valid then
+			bf.shuttle_lite_button.destroy()
+		end
+
+		local new = player.gui.screen.shuttle_lite_frame
+		if new and new.valid then
+			new.visible = false
+			new.destroy()
+		end
 	end
-end)
+
+	local function initGlobals()
+		if not storage or not storage.releaseDate then storage = {} end
+
+		-- key: player index, value: LuaTrain
+		-- https://lua-api.factorio.com/latest/classes/LuaTrain.html#id
+		if not storage.shuttle then storage.shuttle = {} end
+
+		-- UI filter text box content is saved by the game
+	end
+
+	script.on_init(initGlobals)
+
+	script.on_configuration_changed(function(data)
+		local oldVersion = storage.releaseDate or 0
+		storage.releaseDate = VERSION
+
+		if data.mod_changes[C_ENT_NAME_SHUTTLE] and oldVersion < VERSION then
+			initGlobals()
+
+			-- Reset every players UI. If they're riding in a shuttle they'll
+			-- just have to get out and get in again to show the new UI.
+			for _, p in pairs(game.players) do
+				if p and p.valid then resetGui(p) end
+			end
+		end
+	end)
+end

@@ -93,5 +93,13 @@ do
 		volume = 1,
 	}
 
-	data:extend({ tech, input, shortcut, honk, item, recipe, })
+	local font = {
+		type = "font",
+		name = "folk-shuttle",
+		from = "default",
+		spacing = -1,
+		size = 12,
+	}
+
+	data:extend({ tech, input, shortcut, honk, item, recipe, font, })
 end

@@ -18,4 +18,16 @@ _G.data:extend({
 		setting_type = "runtime-per-user",
 		default_value = { r = 0.07, g = 0.92, b = 0, a = 0.5, },
 	},
+	{
+		type = "bool-setting",
+		name = "folk-shuttle-clear-filter-on-confirm",
+		setting_type = "runtime-per-user",
+		default_value = true,
+	},
+	{
+		type = "bool-setting",
+		name = "folk-shuttle-focus-filter-on-show",
+		setting_type = "runtime-per-user",
+		default_value = true,
+	},
 })

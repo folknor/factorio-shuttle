@@ -3,8 +3,7 @@ local VERSION = require("version")
 
 -- TODO
 -- Fix XXX comments
--- GUI arrows? Only when path not found etc?
--- Hack around multiple stations with the same name by sending the shuttle to the stations rail entity instead
+-- GUI arrows? Only when path not found? and player not in shuttle
 
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities
 local investigate = {}
@@ -147,21 +146,23 @@ do
 	end)
 
 	local function createStationButtons(f, stations)
-		local map = {}
+		local total = {}
 		for _, s in next, stations do
-			if not map[s.backer_name] then
-				map[s.backer_name] = { s.unit_number, }
-			else
-				table.insert(map[s.backer_name], s.unit_number)
-			end
+			total[s.backer_name] = (total[s.backer_name] and total[s.backer_name] + 1) or 1
 		end
+		local count = {}
 
-		for name, un in pairs(map) do
+		for _, s in next, stations do
+			local name = s.backer_name
+			if total[s.backer_name] > 1 then
+				count[s.backer_name] = (count[s.backer_name] and count[s.backer_name] + 1) or 1
+				name = s.backer_name .. " (" .. count[s.backer_name] .. "/" .. total[s.backer_name] .. ")"
+			end
 			f.add({
 				type = C_TYPE_BUTTON,
 				style = C_STYLE_BUTTON,
 				caption = name,
-				tooltip = table.concat(un, "|"),
+				tooltip = s.unit_number,
 			})
 		end
 	end
@@ -486,10 +487,20 @@ local function sendShuttleToStation(p, shuttle, station)
 		p.print({ INFO_ALREADY_AT_STATION, station.backer_name, })
 	else
 		p.print({ INFO_SHUTTLE_INCOMING, station.backer_name, })
-		scheduleAndSendShuttle(p, shuttle, {
-			station = station.backer_name,
-			wait_conditions = waitConditions,
-		})
+
+		-- We now always send the shuttle to the connected rail, because
+		-- then we can differentiate between stations with the same name
+		if station.connected_rail and station.connected_rail.valid then
+			scheduleAndSendShuttle(p, shuttle, {
+				wait_conditions = waitConditions,
+				rail = station.connected_rail,
+			})
+		else
+			scheduleAndSendShuttle(p, shuttle, {
+				station = station.backer_name,
+				wait_conditions = waitConditions,
+			})
+		end
 	end
 end
 
@@ -502,25 +513,14 @@ do
 			return
 		end
 
-		local stations = {}
-		for w in button.tooltip:gmatch("([^|]+)") do
-			table.insert(stations, w)
-		end
+		local station = game.get_entity_by_unit_number(button.tooltip)
 
-		for i = #stations, 1, -1 do
-			local ent = game.get_entity_by_unit_number(stations[i])
-			if not ent or not ent.valid then
-				table.remove(stations, i)
-			end
-		end
-
-		if #stations == 0 then
+		if not station or not station.valid then
 			showGui(p) -- Recreates the UI
 			p.print(ERROR_STATION_GONE, ERROR_CONFIG)
 			return
 		end
 
-		local station = game.get_entity_by_unit_number(stations[math.random(#stations)])
 		sendShuttleToStation(p, shuttle, station)
 	end
 

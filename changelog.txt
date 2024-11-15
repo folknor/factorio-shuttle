@@ -1,7 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.3
+Date: 2024-11-15
+  Changes:
+    - We now always try to path to the rail entity connected to the station instead of
+      the station itself. This way we can path directly to any station even if it shares
+      its name with lots of other stations.
+---------------------------------------------------------------------------------------------------
 Version: 0.2.2
 Date: 2024-11-14
-Changes:
+  Changes:
     - First working release for factorio 2.0. Complete overhaul and simplified.
     - Shuttle Trains are now their own locomotives. Research them and build them like normal trains.
     - Removed top left button and added a green button to the standard button bar next to the quick slots.

@@ -9,7 +9,6 @@ local VERSION = require("version")
 -- Add checkbox in the window that toggles whether or not sIgnoreStations should apply
 
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities
-local investigate = {}
 
 local ERROR_CONFIG = {
 	color = { 1, 0, 0, 1, },
@@ -381,11 +380,11 @@ end
 local function assignShuttle(player, shuttle)
 	script.register_on_object_destroyed(shuttle)
 	storage.shuttle[player.index] = shuttle
-	investigate[shuttle.id] = true
+	storage.investigate[shuttle.id] = true
 end
 
 local function freeShuttle(shuttleId)
-	investigate[shuttleId] = nil
+	storage.investigate[shuttleId] = nil
 	for p, s in pairs(storage.shuttle) do
 		if (s.valid and s.id == shuttleId) or not s.valid then
 			storage.shuttle[p] = nil
@@ -435,7 +434,7 @@ end)
 script.on_event(defines.events.on_train_changed_state, function(event)
 	if not event or not event.train or not event.train.valid then return end
 
-	if investigate[event.train.id] then
+	if storage.investigate and storage.investigate[event.train.id] then
 		local t = event.train
 		if (t.state == defines.train_state.no_path) or (t.state == defines.train_state.path_lost) then
 			for p, s in pairs(storage.shuttle) do
@@ -501,7 +500,7 @@ local function isShuttleAtStation(shuttle, station)
 end
 
 local function scheduleAndSendShuttle(p, shuttle, schedule)
-	investigate[shuttle.id] = true
+	storage.investigate[shuttle.id] = true
 	shuttle.schedule = {
 		current = 1,
 		records = { schedule, },
@@ -790,10 +789,14 @@ do
 
 	local function initGlobals()
 		if not storage or not storage.releaseDate then storage = {} end
+		storage.releaseDate = VERSION
 
 		-- key: player index, value: LuaTrain
 		-- https://lua-api.factorio.com/latest/classes/LuaTrain.html#id
 		if not storage.shuttle then storage.shuttle = {} end
+
+		-- key: LuaTrain.id, value: boolean|nil
+		if not storage.investigate then storage.investigate = {} end
 
 		-- UI filter text box content is saved by the game
 	end

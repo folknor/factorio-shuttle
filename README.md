@@ -1,7 +1,5 @@
 # Shuttle Train Lite
 
-A remake of the classic [Shuttle Train mod by Simwir](https://github.com/simwir/Shuttle-Train).
-
 Complete from-the-ground remake of Simwirs excellent [Shuttle Train](https://mods.factorio.com/mods/simwir/ShuttleTrain), because it wasn't really working with 0.15. He has approved of me publishing a remake (I asked him, even though the MIT license would not actually require me to do so).
 
 This fork changes the original in a few ways.
@@ -42,10 +40,7 @@ The filter textfield works quite different from the old Shuttle Train; it filter
     Also, typing a dot (.) in the box is a special case; it will trigger the top-most station button.
     So, once you've typed enough that the top button matches, just input a . as the next character, like "copper 1.", and the topmost button will be triggered.
 
-The station buttons behave differently depending on context;
-
-1. If you are in your shuttle train, it instantly changes destination to the clicked station.
-2. If you are not in a shuttle train, it locates the closest available shuttle train and sends it to the clicked station.
+A station button instantly changes your shuttles destination to the clicked station.
 
 ## Advanced
 
@@ -76,9 +71,9 @@ So if you set the Hidden Names option to (without the quotes): "^Test,%d$", it w
 
 The mod adds a new keybinding; "Call nearest shuttle" that defaults to Ctrl+J.
 
-Pressing this keybind will call the nearest (to your characters position) shuttle train to the nearest station; or the station you have selected (hover your mouse over), or the station you have open (station interface)
+Pressing this keybind will call the nearest (to your characters position) shuttle to the nearest station; or the station you have selected (hover your mouse over), or the station you have open (station interface), or the rail you have selected (hovered).
 
-This also works from the map view when you click a station there.
+This also works from the map view.
 
 ## "Lite"?
 
@@ -86,7 +81,11 @@ Yes, I don't know what that means either. I had to call it something, and my bra
 
 ## Item requirements/"balancing"
 
-The shuttle train and tech might be a bit cheap as it is now. I welcome feedback on that or anything else about the mod. If anyone has thoughts on adding a version of the recipes for the "expensive" game mode, please comment.
+The shuttle locomotive and tech might be a bit cheap as it is now. I welcome feedback on that or anything else about the mod. If anyone has thoughts on adding a version of the recipes for the "expensive" game mode, please comment.
+
+## Contribute
+
+I welcome contributions. Anyone who knows even slightly how to code, make graphics, or whatever, is welcome to get write access to the source code repository.
 
 ## Changelog
 

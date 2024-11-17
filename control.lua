@@ -8,7 +8,7 @@ local VERSION = require("version")
 -- Add a way/keybinding or whatever to show/hide destination UI window
 -- Add checkbox in the window that toggles whether or not sIgnoreStations should apply
 
-local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities
+local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities, toggleGuiCollapsed
 
 local ERROR_CONFIG = {
 	color = { 1, 0, 0, 1, },
@@ -92,16 +92,71 @@ end
 --
 
 do
+	toggleGuiCollapsed = function(player, force)
+		local window = player.gui.screen.shuttle_lite_frame
+		if not window or not window.valid or not window.visible then return end
+		local bottom = window.split
+		if not bottom or not bottom.valid then return end
+
+		if type(force) == "nil" then force = not bottom.visible end
+
+		local btn = window.top.folk_shuttle_collapse_window
+		if force then
+			bottom.visible = true
+			btn.toggled = false
+		else
+			bottom.visible = false
+			btn.toggled = true
+		end
+	end
+
 	local function initGui(player)
 		local frame = player.gui.screen.add({
 			type = "frame",
-			caption = { "shuttle-lite.window-title", },
 			name = "shuttle_lite_frame",
 			direction = "vertical",
 		})
 		frame.auto_center = true
 		frame.style.width = 510
-		frame.style.height = 400
+		frame.style.vertically_stretchable = true
+
+		local top = frame.add({
+			type = "flow",
+			direction = "horizontal",
+			name = "top",
+		})
+		top.style.horizontally_stretchable = true
+		top.style.horizontal_spacing = 8
+
+		local title = top.add({
+			type = "label",
+			style = "frame_title",
+			caption = { "shuttle-lite.window-title", },
+		})
+		title.drag_target = frame -- ZZZ this can't be moved into the table gg
+
+		local pusher = top.add({
+			type = "empty-widget",
+			style = "draggable_space_header",
+		})
+		pusher.drag_target = frame
+		pusher.style.horizontally_stretchable = true
+		pusher.style.height = 24
+
+		top.add({
+			type = "sprite-button",
+			style = "frame_action_button",
+			sprite = "utility/short_indication_line",
+			name = "folk_shuttle_collapse_window",
+			tooltip = { "shuttle-lite.window-collapse", },
+		})
+		top.add({
+			type = "sprite-button",
+			style = "frame_action_button",
+			sprite = "utility/close",
+			name = "folk_shuttle_close_window",
+			tooltip = { "shuttle-lite.window-close", },
+		})
 
 		local vertical = frame.add({
 			name = "split",
@@ -318,6 +373,8 @@ do
 		if getSetting(player, sFocusOnShow) then
 			frame.split.left.shuttle_lite_filter.focus()
 		end
+
+		toggleGuiCollapsed(player, true)
 	end
 
 	-- Must always be safe to call regardless of any circumstance
@@ -592,6 +649,10 @@ do
 				p.gui.screen.shuttle_lite_frame.split.left.shuttle_lite_filter.text = ""
 				updateStationButtonVisibilities(p)
 			end
+		elseif event.element.name == "folk_shuttle_close_window" then
+			hideGui(game.players[event.player_index])
+		elseif event.element.name == "folk_shuttle_collapse_window" then
+			toggleGuiCollapsed(game.players[event.player_index])
 		end
 	end)
 

@@ -4,9 +4,8 @@ local VERSION = require("version")
 -- TODO
 -- Fix XXX comments
 -- GUI arrows? Only when path not found? and player not in shuttle
--- Add a "minimize" (collapse?) button to the destination UI window
--- Add a way/keybinding or whatever to show/hide destination UI window
 -- Add checkbox in the window that toggles whether or not sIgnoreStations should apply
+-- XXX reduce version in info.json before facrel
 
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities, toggleGuiCollapsed
 

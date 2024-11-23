@@ -25,10 +25,13 @@ local INFO_SHUTTLE_INCOMING_RAIL = { "shuttle-lite.train-coming-rail", }
 
 local FILTER_LEADING_SPACE = "^%s*()"
 local FILTER_TRAILING_SPACE = ".*%S"
+local FILTER_EACH_WORD = "[%s%#%p]-(%a?%d*)%S*"
+local MATCH_ONE = "%1"
 local FILTER_NON_SPACE = "%S+"
 local FILTER_CSV = "[^%,]+"
 local FILTER_TRAILING_DOT = "%.$"
 local EMPTY_STRING = ""
+local SPACE_STRING = " "
 local ELEMENT_TEXTBOX_FILTER = "shuttle_lite_filter"
 
 local C_SEARCH_DIRECTION = "respect-movement-direction"
@@ -283,23 +286,40 @@ do
 	local C_TYPE_TABLE = "table"
 	local type = type
 
-	-- map, key: actual station name, value: lowercased name
-	local lowerCaseNames = setmetatable({}, {
-		__index = function(self, k)
-			if type(k) == C_TYPE_TABLE then
-				-- ZZZ index depends on the localized string setup
-				return k[2]:lower()
-			else
-				local v = k:lower()
-				rawset(self, k, v)
-				return v
-			end
-		end,
-	})
-
 	local function trim(s)
 		local from = s:match(FILTER_LEADING_SPACE)
 		return from > #s and EMPTY_STRING or s:match(FILTER_TRAILING_SPACE, from)
+	end
+
+	local lowerCaseNames = {}
+	local firstLetterNames = {}
+
+	-- ZZZ for some reason rawset(self, k, v) doesn't work in factorios lua when |k| is a table?!
+	local function getLowercaseName(p, btn)
+		if not lowerCaseNames[p.index] then lowerCaseNames[p.index] = {} end
+		if lowerCaseNames[p.index][btn.index] then return lowerCaseNames[p.index][btn.index] end
+
+		local cap = btn.caption
+		local lc
+		if type(cap) == C_TYPE_TABLE then
+			lc = cap[2]:lower() .. " " .. tostring(cap[3])
+		else
+			lc = cap:lower()
+		end
+		-- According to the API docs, btn.index is unique per player
+		lowerCaseNames[p.index][btn.index] = lc
+		return lc
+	end
+
+	local function getFirstLetterName(p, btn)
+		if not firstLetterNames[p.index] then firstLetterNames[p.index] = {} end
+		if firstLetterNames[p.index][btn.index] then return firstLetterNames[p.index][btn.index] end
+
+		local lc = getLowercaseName(p, btn)
+		local fl = lc:gsub(FILTER_EACH_WORD, MATCH_ONE):gsub(SPACE_STRING, EMPTY_STRING)
+		firstLetterNames[p.index][btn.index] = fl
+
+		return fl
 	end
 
 	function updateStationButtonVisibilities(p)
@@ -307,21 +327,33 @@ do
 		if not frame then return end
 
 		local btns = frame.split.left.list.children
-
-		for _, btn in next, btns do
-			btn.visible = true
-		end
-
 		local lower = trim(frame.split.left.shuttle_lite_filter.text:lower())
 
 		if lower and lower:len() ~= 0 then
 			for _, btn in next, btns do
+				btn.visible = false
+			end
+
+			-- First we do a first-letter search
+			for _, btn in next, btns do
+				if getFirstLetterName(p, btn):find(lower) then
+					btn.visible = true
+				end
+			end
+
+			for _, btn in next, btns do
 				for word in lower:gmatch(FILTER_NON_SPACE) do
-					if not lowerCaseNames[btn.caption]:find(word, 1, true) then
-						btn.visible = false
+					if getLowercaseName(p, btn):find(word, 1, true) then
+						btn.visible = true
 						break
 					end
 				end
+			end
+
+			print(serpent.block(firstLetterNames))
+		else
+			for _, btn in next, btns do
+				btn.visible = true
 			end
 		end
 
@@ -366,9 +398,13 @@ do
 		end
 
 		frame.split.left.list.clear()
+		lowerCaseNames[player.index] = nil
+		firstLetterNames[player.index] = nil
+
 		createStationButtons(frame.split.left.list, stations)
 		updateStationButtonVisibilities(player)
 		frame.visible = true
+		player.opened = frame
 		if getSetting(player, sFocusOnShow) then
 			frame.split.left.shuttle_lite_filter.focus()
 		end
@@ -389,6 +425,12 @@ do
 		if not frame then return end
 		if frame.visible then showGui(player) end
 	end
+
+	script.on_event(defines.events.on_gui_closed, function(event)
+		if event.element and event.element.valid and event.element.name == "shuttle_lite_frame" then
+			hideGui(game.players[event.player_index])
+		end
+	end)
 end
 
 local function isShuttleValid(player, shuttle)
@@ -821,7 +863,7 @@ do
 	end
 
 	script.on_event(C_LUA_EVENT, keyCombo)
-	script.on_event("on_lua_shortcut", function(event)
+	script.on_event(defines.events.on_lua_shortcut, function(event)
 		if not event or event.prototype_name ~= C_LUA_EVENT then return end
 		keyCombo(event)
 	end)

@@ -6,6 +6,8 @@ This fork changes the original in a few ways.
 
 Personally, I use the mod along with [Just GO!](https://mods.factorio.com/mods/folk/folk-justgo) and [Automated Fuel & Ammo](https://mods.factorio.com/mods/folk/folk-fill), and have one train with this module in my quickbar, and slam it on the rails when I need to.
 
+Please check out [my other addons](https://mods.factorio.com/user/folk) as well!
+
 ## How it works
 
 After researching the technology, two things happen; (1) the mod adds a new green button to the main bottom UI with a train icon on it, and (2) you can now construct Shuttle Trains.
@@ -29,16 +31,19 @@ The interface has 2 elements;
 1. A filter textfield
 2. A list buttons
 
-The filter textfield works quite different from the old Shuttle Train; it filters per word. Examples
+The filter textfield works in many strange ways, for example:
 
 -   "acid main" matches "Main Sulfuric Acid #1"
 -   "sulf main" matches "Main Sulfuric Acid #1"
 -   "oil 1" matches "Oil-Load-#1"
 -   "old coal" matches "Old Base Coal Unload"
 -   "cop 1" matches "Copper #1"
-    and so forth.
-    Also, typing a dot (.) in the box is a special case; it will trigger the top-most station button.
-    So, once you've typed enough that the top button matches, just input a . as the next character, like "copper 1.", and the topmost button will be triggered.
+-   "nwdw" matches "North West Defense Wall"
+-   If you have many stations named for example "Dropoff: Copper", each station will get its own button with a number behind it. Typing for example "dc10" will match "Dropoff: Copper 10".
+
+Hitting Enter or typing a dot (.) in the text box will trigger the top-most visible station button.
+
+So once you've typed enough that the top button matches whatever station you want, just hit Enter or type a . as the next character, like "copper 1.", and the topmost button will be triggered.
 
 A station button instantly changes your shuttles destination to the clicked station.
 

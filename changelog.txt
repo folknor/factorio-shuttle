@@ -10,6 +10,7 @@ Date: 2024-11-23
     - Destination picker search now allows first-letter searching, so if you have a station
       called "North West Wall Defense", you can now type "nwwd" to filter to it.
     - Destination picker window can now be closed using Esc/E
+
 ---------------------------------------------------------------------------------------------------
 Version: 0.2.8
 Date: 2024-11-17

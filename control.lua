@@ -349,8 +349,6 @@ do
 					end
 				end
 			end
-
-			print(serpent.block(firstLetterNames))
 		else
 			for _, btn in next, btns do
 				btn.visible = true

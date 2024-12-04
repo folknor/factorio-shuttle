@@ -11,6 +11,33 @@ local VERSION = require("version")
 ---@field shuttle LuaTrain[]
 ---@field investigate { [number]: boolean }
 
+---@class SLUIFrameMap: LuaGuiElement
+---@field map LuaGuiElement
+
+---@class SLUIFrameMapContainer: LuaGuiElement
+---@field mapcontainer SLUIFrameMap
+
+---@class SLUIFilter: LuaGuiElement
+---@field parent SLUIFrameListContainer
+
+---@class SLUIFrameListContainer
+---@field list LuaGuiElement
+---@field shuttle_lite_filter SLUIFilter
+
+---@class SLUIFrameSplit: LuaGuiElement
+---@field left SLUIFrameListContainer
+---@field right SLUIFrameMapContainer
+
+---@class SLUIFrameTop
+---@field folk_shuttle_collapse_window LuaGuiElement
+
+---@class SLUIFrame: LuaGuiElement
+---@field split SLUIFrameSplit
+---@field top SLUIFrameTop
+
+---@class LuaGuiElement
+---@field shuttle_lite_frame SLUIFrame
+
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities, toggleGuiCollapsed
 
 local ERROR_CONFIG = {
@@ -120,6 +147,7 @@ do
 	end
 
 	---@param player LuaPlayer
+	---@return SLUIFrame
 	local function initGui(player)
 		local frame = player.gui.screen.add({
 			type = "frame",
@@ -255,6 +283,7 @@ do
 
 		frame.visible = false
 
+		---@cast frame SLUIFrame
 		return frame
 	end
 
@@ -377,7 +406,7 @@ do
 
 		for _, btn in next, btns do
 			if btn.visible then
-				local station = game.get_entity_by_unit_number(btn.tooltip)
+				local station = game.get_entity_by_unit_number(tonumber(btn.tooltip) or 0)
 				if station and station.valid then
 					frame.split.right.mapcontainer.map.entity = station
 					break
@@ -750,7 +779,8 @@ do
 
 	script.on_event(defines.events.on_gui_text_changed, function(event)
 		---@cast event OnGuiTextChanged
-		local el = event.element
+
+		local el = event.element --[[@as SLUIFilter]]
 		if el.name == ELEMENT_TEXTBOX_FILTER then
 			local p = game.players[event.player_index]
 
@@ -776,7 +806,7 @@ do
 
 	script.on_event(defines.events.on_gui_confirmed, function(event)
 		---@cast event OnGuiConfirmed
-		local el = event.element
+		local el = event.element --[[@as SLUIFilter]]
 		if el.name == ELEMENT_TEXTBOX_FILTER then
 			local p = game.players[event.player_index]
 			local btns = el.parent.list

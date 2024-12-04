@@ -7,6 +7,10 @@ local VERSION = require("version")
 -- Add checkbox in the window that toggles whether or not sIgnoreStations should apply
 -- XXX reduce version in info.json before facrel
 
+---@class storage
+---@field shuttle LuaTrain[]
+---@field investigate { [number]: boolean }
+
 local showGui, hideGui, updateGuiIfVisible, updateStationButtonVisibilities, toggleGuiCollapsed
 
 local ERROR_CONFIG = {
@@ -78,6 +82,7 @@ do
 		return ini[p.index][setting]
 	end
 	local function update(event)
+		---@cast event OnRuntimeModSettingChanged
 		local p = game.players[event.player_index]
 		if not p or not p.valid then return end
 		if not map[event.setting] then return end
@@ -94,6 +99,8 @@ end
 --
 
 do
+	---@param player LuaPlayer
+	---@param force? boolean
 	toggleGuiCollapsed = function(player, force)
 		local window = player.gui.screen.shuttle_lite_frame
 		if not window or not window.valid or not window.visible then return end
@@ -112,12 +119,14 @@ do
 		end
 	end
 
+	---@param player LuaPlayer
 	local function initGui(player)
 		local frame = player.gui.screen.add({
 			type = "frame",
 			name = "shuttle_lite_frame",
 			direction = "vertical",
 		})
+
 		frame.auto_center = true
 		frame.style.width = 510
 		frame.style.vertically_stretchable = true
@@ -249,6 +258,8 @@ do
 		return frame
 	end
 
+	---@param f LuaGuiElement
+	---@param stations { [number]: LuaEntity }
 	local function createStationButtons(f, stations)
 		local total = {}
 		for _, s in next, stations do
@@ -257,6 +268,7 @@ do
 		local count = {}
 
 		for _, s in next, stations do
+			---@type LocalisedString
 			local name = s.backer_name
 			if total[s.backer_name] > 1 then
 				count[s.backer_name] = (count[s.backer_name] and count[s.backer_name] + 1) or 1
@@ -273,11 +285,12 @@ do
 	end
 
 	script.on_event(defines.events.on_gui_hover, function(event)
+		---@cast event OnGuiHover
 		if not event or not event.element then return end
 		if event.element.style and event.element.style.name == C_STYLE_BUTTON then
 			local frame = game.players[event.player_index].gui.screen.shuttle_lite_frame
 			if not frame then return end
-			local station = game.get_entity_by_unit_number(event.element.tooltip)
+			local station = game.get_entity_by_unit_number(tonumber(event.element.tooltip) or 0)
 			if not station or not station.valid then return end
 			frame.split.right.mapcontainer.map.entity = station
 		end
@@ -295,22 +308,28 @@ do
 	local firstLetterNames = {}
 
 	-- ZZZ for some reason rawset(self, k, v) doesn't work in factorios lua when |k| is a table?!
+	---@param p LuaPlayer
+	---@param btn LuaGuiElement
+	---@return string
 	local function getLowercaseName(p, btn)
 		if not lowerCaseNames[p.index] then lowerCaseNames[p.index] = {} end
 		if lowerCaseNames[p.index][btn.index] then return lowerCaseNames[p.index][btn.index] end
 
 		local cap = btn.caption
 		local lc
-		if type(cap) == C_TYPE_TABLE then
-			lc = cap[2]:lower() .. " " .. tostring(cap[3])
+		if cap and type(cap) == C_TYPE_TABLE then
+			lc = tostring(cap[2]):lower() .. " " .. tostring(cap[3])
 		else
-			lc = cap:lower()
+			lc = tostring(cap):lower()
 		end
 		-- According to the API docs, btn.index is unique per player
 		lowerCaseNames[p.index][btn.index] = lc
 		return lc
 	end
 
+	---@param p LuaPlayer
+	---@param btn LuaGuiElement
+	---@return string
 	local function getFirstLetterName(p, btn)
 		if not firstLetterNames[p.index] then firstLetterNames[p.index] = {} end
 		if firstLetterNames[p.index][btn.index] then return firstLetterNames[p.index][btn.index] end
@@ -322,6 +341,7 @@ do
 		return fl
 	end
 
+	---@param p LuaPlayer
 	function updateStationButtonVisibilities(p)
 		local frame = p.gui.screen.shuttle_lite_frame
 		if not frame then return end
@@ -370,6 +390,7 @@ do
 		return a.backer_name < b.backer_name
 	end
 
+	---@param player LuaPlayer
 	function showGui(player)
 		local frame = player.gui.screen.shuttle_lite_frame
 		if not frame then frame = initGui(player) end
@@ -411,6 +432,7 @@ do
 	end
 
 	-- Must always be safe to call regardless of any circumstance
+	---@param player LuaPlayer
 	function hideGui(player)
 		if not player or not player.valid then return end
 		local frame = player.gui.screen.shuttle_lite_frame
@@ -418,6 +440,7 @@ do
 		frame.visible = false
 	end
 
+	---@param player LuaPlayer
 	function updateGuiIfVisible(player)
 		local frame = player.gui.screen.shuttle_lite_frame
 		if not frame then return end
@@ -425,12 +448,16 @@ do
 	end
 
 	script.on_event(defines.events.on_gui_closed, function(event)
+		---@cast event OnGuiClosed
 		if event.element and event.element.valid and event.element.name == "shuttle_lite_frame" then
 			hideGui(game.players[event.player_index])
 		end
 	end)
 end
 
+---@param player LuaPlayer
+---@param shuttle LuaTrain
+---@return boolean
 local function isShuttleValid(player, shuttle)
 	if not shuttle or not shuttle.valid or not shuttle.front_stock or not shuttle.front_stock.valid then return false end
 
@@ -473,12 +500,15 @@ local function isShuttleValid(player, shuttle)
 	return true
 end
 
+---@param player LuaPlayer
+---@param shuttle LuaTrain
 local function assignShuttle(player, shuttle)
 	script.register_on_object_destroyed(shuttle)
 	storage.shuttle[player.index] = shuttle
 	storage.investigate[shuttle.id] = true
 end
 
+---@param shuttleId number
 local function freeShuttle(shuttleId)
 	storage.investigate[shuttleId] = nil
 	for p, s in pairs(storage.shuttle) do
@@ -489,6 +519,7 @@ local function freeShuttle(shuttleId)
 	end
 end
 
+---@param p LuaPlayer
 local function freePlayer(p)
 	storage.shuttle[p.index] = nil
 	hideGui(p)
@@ -503,18 +534,22 @@ local waitConditions = {
 }
 
 script.on_event(defines.events.on_player_mined_entity, function(event)
+	---@cast event OnPlayerMinedEntity
 	local e = event.entity
 	if not e or not e.valid or not e.unit_number or not e.train or not e.train.id then return end
 	freeShuttle(e.train.id)
 end)
 
 script.on_event(defines.events.on_object_destroyed, function(event)
+	---@cast event OnObjectDestroyed
 	if event.type == defines.target_type.train then
 		freeShuttle(event.useful_id)
 	end
 end)
 
 script.on_event(defines.events.on_player_driving_changed_state, function(event)
+	---@cast event OnPlayerDrivingChangedState
+
 	local p = game.players[event.player_index]
 	if not p then return end
 	if p.vehicle and p.vehicle.valid and p.vehicle.name == C_ENT_NAME_SHUTTLE and p.vehicle.train and p.vehicle.train.id then
@@ -528,6 +563,7 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
 end)
 
 script.on_event(defines.events.on_train_changed_state, function(event)
+	---@cast event OnTrainChangedState
 	if not event or not event.train or not event.train.valid then return end
 
 	if storage.investigate and storage.investigate[event.train.id] then
@@ -547,6 +583,8 @@ script.on_event(defines.events.on_train_changed_state, function(event)
 	end
 end)
 
+---@param p LuaPlayer
+---@return LuaTrain?
 local function getShuttle(p)
 	local shuttle
 
@@ -585,6 +623,9 @@ local function getShuttle(p)
 	return shuttle
 end
 
+---@param shuttle LuaTrain
+---@param station LuaEntity
+---@return boolean
 local function isShuttleAtStation(shuttle, station)
 	if shuttle.state == defines.train_state.wait_station and shuttle.schedule.records[1].station == station.backer_name then
 		return true
@@ -595,6 +636,9 @@ local function isShuttleAtStation(shuttle, station)
 	return false
 end
 
+---@param p LuaPlayer
+---@param shuttle LuaTrain
+---@param schedule ScheduleRecord
 local function scheduleAndSendShuttle(p, shuttle, schedule)
 	storage.investigate[shuttle.id] = true
 	shuttle.schedule = {
@@ -609,6 +653,9 @@ local function scheduleAndSendShuttle(p, shuttle, schedule)
 end
 
 -- XXX move isvalidrail and also make an isvalidstation etc
+---@param p LuaPlayer
+---@param shuttle? LuaTrain
+---@param rail? LuaEntity
 local function sendShuttleToRail(p, shuttle, rail)
 	if not rail or not rail.valid then
 		p.print(ERROR_NO_RAIL, ERROR_CONFIG)
@@ -626,6 +673,9 @@ local function sendShuttleToRail(p, shuttle, rail)
 	})
 end
 
+---@param p LuaPlayer
+---@param shuttle? LuaTrain
+---@param station? LuaEntity
 local function sendShuttleToStation(p, shuttle, station)
 	if not station or not station.valid then
 		p.print(ERROR_NO_STATION, ERROR_CONFIG)
@@ -659,6 +709,8 @@ local function sendShuttleToStation(p, shuttle, station)
 end
 
 do
+	---@param p LuaPlayer
+	---@param button LuaGuiElement
 	local function buttonCallShuttle(p, button)
 		local shuttle = getShuttle(p)
 
@@ -667,7 +719,7 @@ do
 			return
 		end
 
-		local station = game.get_entity_by_unit_number(button.tooltip)
+		local station = game.get_entity_by_unit_number(tonumber(button.tooltip) or 0)
 
 		if not station or not station.valid then
 			showGui(p) -- Recreates the UI
@@ -679,6 +731,7 @@ do
 	end
 
 	script.on_event(defines.events.on_gui_click, function(event)
+		---@cast event OnGuiClick
 		if not event or not event.element then return end
 		if event.element.style and event.element.style.name == "shuttle-lite-station-button" then
 			local p = game.players[event.player_index]
@@ -696,6 +749,7 @@ do
 	end)
 
 	script.on_event(defines.events.on_gui_text_changed, function(event)
+		---@cast event OnGuiTextChanged
 		local el = event.element
 		if el.name == ELEMENT_TEXTBOX_FILTER then
 			local p = game.players[event.player_index]
@@ -721,6 +775,7 @@ do
 	end)
 
 	script.on_event(defines.events.on_gui_confirmed, function(event)
+		---@cast event OnGuiConfirmed
 		local el = event.element
 		if el.name == ELEMENT_TEXTBOX_FILTER then
 			local p = game.players[event.player_index]
@@ -740,9 +795,13 @@ do
 end
 
 do
+	---@param e LuaEntity
+	---@return boolean
 	local function validStop(e) return e and e.valid and e.type == "train-stop" end
 
 	-- pls if you know a better way hlep
+	---@param e LuaEntity
+	---@return boolean
 	local function validRail(e)
 		return e and e.valid and e.prototype and e.prototype.mineable_properties and
 			e.prototype.mineable_properties.products and e.prototype.mineable_properties.products[1] and
@@ -753,6 +812,9 @@ do
 		return a[2] < b[2]
 	end
 
+	---@param p LuaPlayer
+	---@param shuttle LuaTrain
+	---@return LuaEntity?
 	local function findNearestPathableStation(p, shuttle)
 		local lowestDistance = nil
 		local distances = {}
@@ -828,12 +890,13 @@ do
 			-- })
 			sendShuttleToRail(p, shuttle, p.selected)
 		else
+			---@type LuaEntity?
 			local station
 
 			if validStop(p.selected) then
 				station = p.selected
-			elseif validStop(p.opened) then
-				station = p.opened
+			elseif validStop(p.opened --[[@as LuaEntity]]) then
+				station = p.opened --[[@as LuaEntity]]
 			end
 
 			if not station then
@@ -862,12 +925,14 @@ do
 
 	script.on_event(C_LUA_EVENT, keyCombo)
 	script.on_event(defines.events.on_lua_shortcut, function(event)
+		---@cast event OnLuaShortcut
 		if not event or event.prototype_name ~= C_LUA_EVENT then return end
 		keyCombo(event)
 	end)
 end
 
 do
+	---@param player LuaPlayer
 	local function resetGui(player)
 		local ff = modGui.get_frame_flow(player)
 		if ff and ff.shuttle_lite_frame and ff.shuttle_lite_frame.valid then
@@ -886,6 +951,8 @@ do
 			new.destroy()
 		end
 	end
+
+
 
 	local function initGlobals()
 		if not storage or not storage.releaseDate then storage = {} end

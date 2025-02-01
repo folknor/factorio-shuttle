@@ -2,9 +2,6 @@ do
 	-- I think we need this in -updates, because I think elevated-rails
 	-- modifies the locomotive prototype in -updates? I've not double checked.
 
-	local elevated = require("__elevated-rails__.prototypes.sloped-trains-updates")
-	local meld = require("__core__.lualib.meld")
-
 	local shuttle = table.deepcopy(data.raw.locomotive.locomotive)
 	shuttle.name = "folk-shuttle"
 	shuttle.icon = "__folk-shuttle__/graphics/folk-shuttle-locomotive.png"
@@ -17,7 +14,11 @@ do
 	shuttle.selected_minimap_representation.filename = "__folk-shuttle__/graphics/shuttle-minimap-selected.png"
 	shuttle.hidden_in_factoriopedia = true
 
-	meld(shuttle, elevated.locomotive)
+	if mods["elevated-rails"] then
+		local elevated = require("__elevated-rails__.prototypes.sloped-trains-updates")
+		local meld = require("__core__.lualib.meld")
+		meld(shuttle, elevated.locomotive)
+	end
 
 	_G.data:extend({ shuttle, })
 end

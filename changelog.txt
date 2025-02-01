@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.10
+Date: 2025-02-01
+  Changes:
+    - Hopefully works without Space Age expansion and Elevated Rails.
+    - Only tested loading a new freeplay game.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.2.9
 Date: 2024-11-23
   Changes:

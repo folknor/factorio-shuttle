@@ -1,8 +1,9 @@
 do
-	-- I think we need this in -updates, because I think elevated-rails
-	-- modifies the locomotive prototype in -updates? I've not double checked.
+	-- ZZZ this could be moved to data, because elevated-rails updates
+	-- ZZZ the locomotive in the first stage, and we optdep on it
+	local util = require("__core__/lualib/util")
 
-	local shuttle = table.deepcopy(data.raw.locomotive.locomotive)
+	local shuttle = util.copy(data.raw.locomotive.locomotive)
 	shuttle.name = "folk-shuttle"
 	shuttle.icon = "__folk-shuttle__/graphics/folk-shuttle-locomotive.png"
 	shuttle.minable.result = "folk-shuttle"

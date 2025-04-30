@@ -110,7 +110,7 @@ do
 	end
 	local function update(event)
 		---@cast event OnRuntimeModSettingChanged
-		local p = game.players[event.player_index]
+		local p = event.player_index and game.players[event.player_index]
 		if not p or not p.valid then return end
 		if not map[event.setting] then return end
 		if not ini[p.index] then ini[p.index] = {} end
